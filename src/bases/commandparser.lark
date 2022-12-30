@@ -1,0 +1,9 @@
+?start: statement
+statement: positionals? optionals?
+positionals: positional | positionals positional
+optionals: optional | optionals optional
+positional: " " word
+optional: (" -" letter (" " word)*) | (" --" arg (" " word)*)
+word: /\S+/
+arg: /[a-zA-Z]+/
+letter: /[a-zA-Z]/
