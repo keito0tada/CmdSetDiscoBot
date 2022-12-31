@@ -1,12 +1,12 @@
 from discord.ext import commands, tasks
 import discord
 import asyncio
+import os
 
 INITIAL_EXTENSIONS = [
     'cogs.command'
 ]
-# TOKEN = os.getenv('DISCORD_BOT_TOKEN')
-TOKEN = 'MTAyNzE2OTA5NjQyMjQwODI0Mw.GRpk0u.MURnA90p8zrw4nrBsMU1E2s297vzfpD7c-6sjM'
+TOKEN = os.getenv('DISCORD_BOT_TOKEN')
 bot = commands.Bot(command_prefix='/', intents=discord.Intents.all())
 
 

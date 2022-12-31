@@ -227,7 +227,7 @@ class CommandParser:
             self.namespace.__dict__[inp[0]] = inp[1:]
             self.namespace.args[inp[0]] = inp[1:]
 
-    def parse_args(self, args: typing.Tuple[str]):
+    def parse_args(self, args: typing.Tuple[str]) -> Namespace:
         print(args)
         self.tree = self.parser.parse(reduce(lambda x, y: x + ' ' + y, args, ''))
         print(self.tree.pretty())
