@@ -21,7 +21,7 @@ class Schedule(base.Command):
         self.database_connector = psycopg2.connect(DATABASE_URL)
         self.table_name = 'schedule'
         with self.database_connector.cursor() as cur:
-            cur.execute('CREATE TABLE IF NOT EXISTS {0} (userid INT, title NVARCHAR(256), description NVARCHAR(4096), date DATETIME)'.format(self.table_name))
+            cur.execute('CREATE TABLE IF NOT EXISTS {0} (userid INT, title TEXT, description TEXT, date DATETIME)'.format(self.table_name))
             self.database_connector.commit()
 
     @commands.command()
