@@ -63,7 +63,7 @@ class Schedule(base.Command):
 
                 with self.database_connector.cursor() as cur:
                     cur.execute('INSERT INTO {table} (userid, description, date) VALUES {data}'.format(
-                        table=self.table_name, data=(ctx.author.id, namespace.sentence, date)))
+                        table=self.table_name, data=(ctx.author.id, namespace.sentence, str(date))))
 
                 heapq.heappush(self.scheduled_messages, (datetime.datetime.strptime(namespace.date, '%Y/%m/%d/%H:%M'),
                                                          base.Window(
