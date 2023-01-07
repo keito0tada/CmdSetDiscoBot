@@ -15,6 +15,10 @@ import enum
 from enum import IntEnum
 
 
+class CmdSetException(Exception):
+    pass
+
+
 # super class of all windows
 # we must use when we send any messages to users
 class Window:

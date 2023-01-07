@@ -1,3 +1,4 @@
+import re
 import typing
 import os
 import psycopg2
@@ -8,8 +9,11 @@ from bases import commandparser
 import heapq
 import datetime
 
-
 DATABASE_URL = os.getenv('DATABASE_URL')
+
+
+class InputValueError(base.CmdSetException):
+    pass
 
 
 class Schedule(base.Command):
@@ -21,7 +25,9 @@ class Schedule(base.Command):
         self.database_connector = psycopg2.connect(DATABASE_URL)
         self.table_name = 'schedule'
         with self.database_connector.cursor() as cur:
-            cur.execute('CREATE TABLE IF NOT EXISTS {0} (userid INT, title TEXT, description TEXT, date TIMESTAMP)'.format(self.table_name))
+            cur.execute(
+                'CREATE TABLE IF NOT EXISTS {0} (userid INT, title TEXT, description TEXT, date TIMESTAMP)'.format(
+                    self.table_name))
             self.database_connector.commit()
 
     @commands.command()
@@ -35,19 +41,37 @@ class Schedule(base.Command):
         else:
             print(namespace.sentence)
             print(namespace.date)
+            try:
+                p = re.compile(
+                    r'[0-9]{4}[/;:\-_,]+(0?[0-9]|1[0-2])[/;:\-_,]+[0-3]?[0-9][/;:\-_,][0-2]?[0-9][/;:\-_,][0-5]?[0-9]')
+                if p.fullmatch(namespace.date):
+                    date_lst = re.split(r'[/;:\-_,]+', namespace.date)
+                    date = datetime.datetime(
+                        year=date_lst[0], month=date_lst[1], day=date_lst[2], hour=date_lst[3], minute=date_lst[4])
+                else:
+                    raise InputValueError
 
-            with self.database_connector.cursor() as cur:
-                cur.execute('SELECT COUNT(userid) FROM {table}'.format(table=self.table_name))
-                print(cur.fetchone())
-                cur.execute('SELECT * FROM {table}'.format(table=self.table_name))
-                print(cur.fetchall())
+            except (ValueError, InputValueError):
+                print('value error')
 
-            heapq.heappush(self.scheduled_messages, (datetime.datetime.strptime(namespace.date, '%Y/%m/%d/%H:%M'),
-                                                     base.Window(embed=discord.Embed(description=namespace.sentence)),
-                                                     ctx.channel))
-            await base.Window(embed=discord.Embed(
-                title="予約完了", description=namespace.date + 'に予約しました。'
-            )).send(ctx.channel)
+            else:
+                with self.database_connector.cursor() as cur:
+                    cur.execute('SELECT COUNT(userid) FROM {table}'.format(table=self.table_name))
+                    print(cur.fetchone())
+                    cur.execute('SELECT * FROM {table}'.format(table=self.table_name))
+                    print(cur.fetchall())
+
+                with self.database_connector.cursor() as cur:
+                    cur.execute('INSERT INTO {table} (userid, description, date) VALUES {data}'.format(
+                        table=self.table_name, data=(ctx.author.id, namespace.sentence, date)))
+
+                heapq.heappush(self.scheduled_messages, (datetime.datetime.strptime(namespace.date, '%Y/%m/%d/%H:%M'),
+                                                         base.Window(
+                                                             embed=discord.Embed(description=namespace.sentence)),
+                                                         ctx.channel))
+                await base.Window(embed=discord.Embed(
+                    title="予約完了", description=namespace.date + 'に予約しました。'
+                )).send(ctx.channel)
 
     @tasks.loop(seconds=60)
     async def printer(self):
