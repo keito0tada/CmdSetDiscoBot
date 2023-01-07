@@ -13,6 +13,7 @@ bot = commands.Bot(command_prefix='/', intents=discord.Intents.all())
 @bot.event
 async def on_ready():
     print('Ready!')
+    await load_initial_extensions()
 
 
 async def load_initial_extensions():
@@ -20,6 +21,5 @@ async def load_initial_extensions():
         await bot.load_extension(i)
     print(bot.extensions)
 
-
-asyncio.run(load_initial_extensions())
+# asyncio.run(load_initial_extensions())
 bot.run(TOKEN)

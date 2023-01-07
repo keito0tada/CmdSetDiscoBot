@@ -2,6 +2,7 @@ import re
 import typing
 import os
 import psycopg2
+import psycopg2.extras
 import discord
 from discord.ext import commands, tasks
 from bases import base
@@ -22,12 +23,11 @@ class Schedule(base.Command):
         self.parser.add_argument('sentence')
         self.parser.add_argument('date')
         self.scheduled_messages: typing.List[typing.Tuple[datetime.datetime, base.Window, discord.TextChannel]] = []
+        self.printer.start()
         self.database_connector = psycopg2.connect(DATABASE_URL)
-        self.table_name = 'schedule'
         with self.database_connector.cursor() as cur:
             cur.execute(
-                'CREATE TABLE IF NOT EXISTS {0} (userid INT, title TEXT, description TEXT, date TIMESTAMP)'.format(
-                    self.table_name))
+                'CREATE TABLE IF NOT EXISTS schedule (channelid BIGINT, userid BIGINT, title TEXT, description TEXT, date TIMESTAMP)')
             self.database_connector.commit()
 
     @commands.command()
@@ -39,11 +39,8 @@ class Schedule(base.Command):
         except commandparser.InputArgumentError as e:
             await ctx.channel.send(embed=e.embed)
         else:
-            print(namespace.sentence)
-            print(namespace.date)
             try:
-                p = re.compile(
-                    r'[0-9]{4}[/;:\-_,]+(0?[0-9]|1[0-2])[/;:\-_,]+[0-3]?[0-9][/;:\-_,][0-2]?[0-9][/;:\-_,][0-5]?[0-9]')
+                p = re.compile(r'([0-9]+[^0-9]+){4}[0-9]+')
                 if p.fullmatch(namespace.date):
                     date_lst = re.split(r'[/;:\-_,]+', namespace.date)
                     date = datetime.datetime(
@@ -56,19 +53,9 @@ class Schedule(base.Command):
 
             else:
                 with self.database_connector.cursor() as cur:
-                    cur.execute('SELECT COUNT(userid) FROM {table}'.format(table=self.table_name))
-                    print(cur.fetchone())
-                    cur.execute('SELECT * FROM {table}'.format(table=self.table_name))
-                    print(cur.fetchall())
-
-                with self.database_connector.cursor() as cur:
-                    cur.execute('INSERT INTO {table} (userid, description, date) VALUES {data}'.format(
-                        table=self.table_name, data=(ctx.author.id, namespace.sentence, str(date))))
-
-                heapq.heappush(self.scheduled_messages, (datetime.datetime.strptime(namespace.date, '%Y/%m/%d/%H:%M'),
-                                                         base.Window(
-                                                             embed=discord.Embed(description=namespace.sentence)),
-                                                         ctx.channel))
+                    cur.execute('INSERT INTO schedule (channelid, userid, description, date) VALUES {data}'.format(
+                        data=(ctx.channel.id, ctx.author.id, namespace.sentence, str(date))))
+                    self.database_connector.commit()
                 await base.Window(embed=discord.Embed(
                     title="予約完了", description=namespace.date + 'に予約しました。'
                 )).send(ctx.channel)
@@ -76,12 +63,20 @@ class Schedule(base.Command):
     @tasks.loop(seconds=60)
     async def printer(self):
         now = datetime.datetime.now()
-        print(now)
-        while len(self.scheduled_messages) > 0 and self.scheduled_messages[0][0] <= now:
-            window = self.scheduled_messages[0][1]
-            channel = self.scheduled_messages[0][2]
-            heapq.heappop(self.scheduled_messages)
-            await window.send(channel=channel)
+        with self.database_connector.cursor(cursor_factory=psycopg2.extras.DictCursor) as cur:
+            cur.execute('SELECT channelid, userid, title, description, date FROM schedule WHERE date <= \'{}\''.format(str(now)))
+            results = cur.fetchall()
+            cur.execute('DELETE FROM schedule WHERE date <= \'{}\''.format(str(now)))
+            self.database_connector.commit()
+
+        for result in results:
+            channel = self.bot.get_channel(result[0])
+            user = channel.guild.get_member(result[1])
+            embed = discord.Embed(title=result[2], description=result[3])
+            embed.set_footer(text='scheduled {}'.format(result[4]))
+            if user is not None:
+                embed.set_author(name=user.name)
+            await channel.send(embed=embed)
 
 
 async def setup(bot: commands.Bot):
