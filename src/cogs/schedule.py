@@ -1,5 +1,6 @@
 import typing
-
+import os
+import psycopg2
 import discord
 from discord.ext import commands, tasks
 from bases import base
@@ -8,12 +9,20 @@ import heapq
 import datetime
 
 
+DATABASE_URL = os.getenv('DATABASE_URL')
+
+
 class Schedule(base.Command):
     def __init__(self, bot: commands.Bot):
         super().__init__(bot=bot)
         self.parser.add_argument('sentence')
         self.parser.add_argument('date')
         self.scheduled_messages: typing.List[typing.Tuple[datetime.datetime, base.Window, discord.TextChannel]] = []
+        self.database_connector = psycopg2.connect(DATABASE_URL)
+        self.table_name = 'schedule'
+        with self.database_connector.cursor() as cur:
+            cur.execute('CREATE TABLE IF NOT EXISTS {0} (userid INT, title NVARCHAR(256), description NVARCHAR(4096), date DATETIME)'.format(self.table_name))
+            self.database_connector.commit()
 
     @commands.command()
     async def schedule(self, ctx: commands.Context, *args):
@@ -26,6 +35,13 @@ class Schedule(base.Command):
         else:
             print(namespace.sentence)
             print(namespace.date)
+
+            with self.database_connector.cursor() as cur:
+                cur.execute('SELECT COUNT(userid) FROM {table}'.format(table=self.table_name))
+                print(cur.fetchone())
+                cur.execute('SELECT * FROM {table}'.format(table=self.table_name))
+                print(cur.fetchall())
+
             heapq.heappush(self.scheduled_messages, (datetime.datetime.strptime(namespace.date, '%Y/%m/%d/%H:%M'),
                                                      base.Window(embed=discord.Embed(description=namespace.sentence)),
                                                      ctx.channel))
