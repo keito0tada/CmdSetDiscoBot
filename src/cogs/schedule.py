@@ -63,6 +63,7 @@ class Schedule(base.Command):
     @tasks.loop(seconds=60)
     async def printer(self):
         now = datetime.datetime.now()
+        print(now)
         with self.database_connector.cursor(cursor_factory=psycopg2.extras.DictCursor) as cur:
             cur.execute('SELECT channelid, userid, title, description, date FROM schedule WHERE date <= \'{}\''.format(str(now)))
             results = cur.fetchall()
