@@ -47,7 +47,7 @@ class Schedule(base.Command):
                 if p.fullmatch(namespace.date):
                     date_lst = re.split(r'[/;:\-_,]+', namespace.date)
                     date = datetime.datetime(
-                        year=date_lst[0], month=date_lst[1], day=date_lst[2], hour=date_lst[3], minute=date_lst[4])
+                        year=int(date_lst[0]), month=int(date_lst[1]), day=int(date_lst[2]), hour=int(date_lst[3]), minute=int(date_lst[4]))
                 else:
                     raise InputValueError
 
