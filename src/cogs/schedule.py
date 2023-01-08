@@ -21,7 +21,8 @@ class InputValueError(base.CmdSetException):
 class Schedule(base.Command):
     def __init__(self, bot: commands.Bot):
         super().__init__(bot=bot)
-        self.parser.add_argument('sentence')
+        self.parser.add_argument('title')
+        self.parser.add_argument('description')
         self.parser.add_argument('date')
         self.scheduled_messages: typing.List[typing.Tuple[datetime.datetime, base.Window, discord.TextChannel]] = []
         self.printer.start()
@@ -54,8 +55,8 @@ class Schedule(base.Command):
 
             else:
                 with self.database_connector.cursor() as cur:
-                    cur.execute('INSERT INTO schedule (channelid, userid, description, date) VALUES {data}'.format(
-                        data=(ctx.channel.id, ctx.author.id, namespace.sentence, str(date))))
+                    cur.execute('INSERT INTO schedule (channelid, userid, title, description, date) VALUES {data}'.format(
+                        data=(ctx.channel.id, ctx.author.id, namespace.title, namespace.description, str(date))))
                     self.database_connector.commit()
                 await base.Window(embed=discord.Embed(
                     title="予約完了", description=namespace.date + 'に予約しました。'
@@ -64,6 +65,8 @@ class Schedule(base.Command):
     @tasks.loop(seconds=60)
     async def printer(self):
         now = datetime.datetime.now(zoneinfo.ZoneInfo('Asia/Tokyo'))
+        now = datetime.datetime.now()
+        print(now)
         with self.database_connector.cursor(cursor_factory=psycopg2.extras.DictCursor) as cur:
             cur.execute('SELECT channelid, userid, title, description, date FROM schedule WHERE date <= \'{}\''.format(str(now)))
             results = cur.fetchall()
