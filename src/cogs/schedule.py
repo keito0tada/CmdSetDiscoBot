@@ -9,6 +9,7 @@ from bases import base
 from bases import commandparser
 import heapq
 import datetime
+import zoneinfo 
 
 DATABASE_URL = os.getenv('DATABASE_URL')
 
@@ -62,7 +63,7 @@ class Schedule(base.Command):
 
     @tasks.loop(seconds=60)
     async def printer(self):
-        now = datetime.datetime.now()
+        now = datetime.datetime.now(zoneinfo.ZoneInfo('Asia/Tokyo'))
         with self.database_connector.cursor(cursor_factory=psycopg2.extras.DictCursor) as cur:
             cur.execute('SELECT channelid, userid, title, description, date FROM schedule WHERE date <= \'{}\''.format(str(now)))
             results = cur.fetchall()
