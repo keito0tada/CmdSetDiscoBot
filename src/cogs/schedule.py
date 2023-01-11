@@ -34,8 +34,6 @@ class Schedule(base.Command):
 
     @commands.command()
     async def schedule(self, ctx: commands.Context, *args):
-        if not self.printer.is_running():
-            self.printer.start()
         try:
             namespace = self.parser.parse_args(args=args)
         except commandparser.InputArgumentError as e:
