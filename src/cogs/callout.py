@@ -5,7 +5,7 @@ from discord.ext import commands
 
 class CallOut(base.Command):
     def __init__(self):
-        pass
+        super().__init__()
 
     @commands.command
     def call_out(self):

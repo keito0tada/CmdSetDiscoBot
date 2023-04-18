@@ -1,5 +1,6 @@
 import abc
 import typing
+from typing import Optional, List
 
 from discord.ext import commands, tasks
 import discord
@@ -92,11 +93,40 @@ class WindowManager(commands.Cog):
         pass
 
 
+class Runner(commands.Cog):
+    def __init__(self, bot: discord.ext.commands.Bot, channel: discord.TextChannel):
+        self.bot = bot
+        self.guild = channel.guild
+        self.channel = channel
+
+    async def destroy(self):
+        pass
+
+
+# button used on class Runner
+class Button(discord.ui.Button):
+    def __init__(self, runner: Runner, style: discord.ButtonStyle = None, label: Optional[str] = None, disabled=False,
+                 custom_id: Optional[str] = None, url: Optional[str] = None,
+                 emoji: Optional[Union[discord.PartialEmoji, discord.Emoji, str]] = None, row: Optional[int] = None):
+        super().__init__(style=style, label=label, disabled=disabled,
+                         custom_id=custom_id, url=url, emoji=emoji, row=row)
+        self.runner = runner
+
+
 # super class of all commands
 class Command(commands.Cog):
-    def __init__(self, bot: discord.ext.commands.Bot):
+    def __init__(self, bot: discord.ext.commands.Bot, allow_duplicated=False):
         self.bot = bot
+        self.allow_duplicated = allow_duplicated
         # command parser
         self.parser = commandparser.CommandParser()
         self.window_manager: Union[WindowManager, None] = None
 
+
+class ExCommand(commands.Cog):
+    def __init__(self, bot: discord.ext.commands.Bot, allow_duplicated=False, runner: Runner = None, runners: typing.List[Runner] = []):
+        self.bot = bot
+        self.allow_duplicated = allow_duplicated
+        self.parser = commandparser.CommandParser()
+        self.runner = runner
+        self.runners = runners

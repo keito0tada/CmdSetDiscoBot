@@ -2,6 +2,8 @@ import discord
 from discord.ext import commands
 from bases import base
 
+class Menu(base.Command):
+    pass
 
 class Help(base.Command):
     MAX_NUMBER_FIELD = 25
