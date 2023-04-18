@@ -1,6 +1,6 @@
 import abc
 import typing
-from typing import Optional, List
+from typing import Optional, List, Dict
 
 from discord.ext import commands, tasks
 import discord
@@ -13,7 +13,7 @@ from typing import Union
 from bases import commandparser
 from dataclasses import dataclass
 import enum
-from enum import IntEnum
+from enum import Enum
 
 
 class CmdSetException(Exception):
@@ -47,6 +47,74 @@ class Window:
 
     async def edit(self, message: discord.Message) -> None:
         await message.edit(content=self.content, embed=self.embed, view=self.view)
+
+
+class ExWindow:
+    class Pattern(Enum):
+        default = 0
+        
+    def __init__(self, content: Optional[str] = None, embed: Optional[discord.Embed] = None,
+                 embeds: List[discord.Embed] = None, view: Optional[discord.ui.View] = None,
+                 emojis: List[str] = None):
+        self.content = content
+        self.embed = embed
+        self.embeds = embeds
+        self.view = view
+        self.emojis = emojis
+
+        self.contents: List[str] = []
+        self.embed_patterns: List[discord.Embed] = []
+
+    async def send(self, channel: Union[discord.TextChannel, discord.InteractionResponse]) -> discord.Message:
+        if self.embed is None:
+            if self.view is None:
+                message = await channel.send(content=self.content, embeds=self.embeds)
+            else:
+                message = await channel.send(content=self.content, embeds=self.embeds, view=self.view)
+        else:
+            if self.view is None:
+                message = await channel.send(content=self.content, embed=self.embed)
+            else:
+                message = await channel.send(content=self.content, embed=self.embed, view=self.view)
+
+        for emoji in self.emojis:
+            await message.add_reaction(emoji)
+
+        return message
+
+    async def reply(self, sender: discord.Message) -> discord.Message:
+        if self.embed is None:
+            if self.view is None:
+                message = await sender.reply(content=self.content, embeds=self.embeds)
+            else:
+                message = await sender.reply(content=self.content, embeds=self.embeds, view=self.view)
+        else:
+            if self.view is None:
+                message = await sender.reply(content=self.content, embed=self.embed)
+            else:
+                message = await sender.reply(content=self.content, embed=self.embed, view=self.view)
+
+        for emoji in self.emojis:
+            await message.add_reaction(emoji)
+
+        return message
+
+    async def edit(self, sender: discord.Message) -> discord.Message:
+        if self.embed is None:
+            if self.view is None:
+                message = await sender.edit(content=self.content, embeds=self.embeds)
+            else:
+                message = await sender.edit(content=self.content, embeds=self.embeds, view=self.view)
+        else:
+            if self.view is None:
+                message = await sender.edit(content=self.content, embed=self.embed)
+            else:
+                message = await sender.edit(content=self.content, embed=self.embed, view=self.view)
+
+        for emoji in self.emojis:
+            await message.add_reaction(emoji)
+
+        return message
 
 
 class EditableWindow(Window):

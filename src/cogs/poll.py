@@ -8,6 +8,12 @@ from bases import base
 
 class Poll(base.ExCommand):
     class Runner(base.Runner):
+        class PollWindow(base.ExWindow):
+            def __init__(self):
+                super().__init__(embeds=[
+                    discord.Embed(title='投票作成ツール', description='')])
+
+
         class AddButton(discord.ui.Button):
             def __init__(self, runner: 'Poll.Runner'):
                 super().__init__(style=discord.ButtonStyle.primary, label='add')
