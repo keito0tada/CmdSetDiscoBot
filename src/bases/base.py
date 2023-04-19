@@ -53,66 +53,193 @@ class ExWindow:
     class Pattern(Enum):
         default = 0
         
-    def __init__(self, content: Optional[str] = None, embed: Optional[discord.Embed] = None,
-                 embeds: List[discord.Embed] = None, view: Optional[discord.ui.View] = None,
-                 emojis: List[str] = None):
-        self.content = content
-        self.embed = embed
-        self.embeds = embeds
-        self.view = view
-        self.emojis = emojis
+    def __init__(self, patterns: int, content_patterns: List[Optional[str]] = None,
+                 embed_patterns: List[Optional[discord.Embed]] = None,
+                 embeds_patterns: List[Optional[List[discord.Embed]]] = None,
+                 view_patterns: List[Optional[discord.ui.View]] = None,
+                 emojis_patterns: List[Optional[List[str]]] = None):
+        self.content: Optional[str] = None
+        self.embed: Optional[discord.Embed] = None
+        self.embeds: Optional[List[discord.Embed]] = None
+        self.view: Optional[discord.ui.View] = None
+        self.emojis: Optional[List[str]] = None
 
-        self.contents: List[str] = []
-        self.embed_patterns: List[discord.Embed] = []
-
-    async def send(self, channel: Union[discord.TextChannel, discord.InteractionResponse]) -> discord.Message:
-        if self.embed is None:
-            if self.view is None:
-                message = await channel.send(content=self.content, embeds=self.embeds)
-            else:
-                message = await channel.send(content=self.content, embeds=self.embeds, view=self.view)
+        self.patterns = patterns
+        if content_patterns is None:
+            self.content_patterns = [None for i in range(patterns)]
         else:
-            if self.view is None:
-                message = await channel.send(content=self.content, embed=self.embed)
-            else:
-                message = await channel.send(content=self.content, embed=self.embed, view=self.view)
+            self.content_patterns = content_patterns + [
+                None for i in range(patterns - len(content_patterns))
+            ]
+        if embed_patterns is None:
+            self.embed_patterns = [None for i in range(patterns)]
+        else:
+            self.embed_patterns = embed_patterns + [
+                None for i in range(patterns - len(embed_patterns))
+            ]
+        if embeds_patterns is None:
+            self.embeds_patterns = [None for i in range(patterns)]
+        else:
+            self.embeds_patterns = embeds_patterns + [
+                None for i in range(patterns - len(embeds_patterns))
+            ]
+        if view_patterns is None:
+            self.view_patterns = [None for i in range(patterns)]
+        else:
+            self.view_patterns = view_patterns + [
+                None for i in range(patterns - len(view_patterns))
+            ]
+        if emojis_patterns is None:
+            self.emojis_patterns = [None for i in range(patterns)]
+        else:
+            self.emojis_patterns = emojis_patterns + [
+                None for i in range(patterns - len(emojis_patterns))
+            ]
+        self.set_pattern(0)
 
-        for emoji in self.emojis:
-            await message.add_reaction(emoji)
+    def set_pattern(self, pattern_id: int):
+        if self.patterns <= pattern_id:
+            raise ValueError
+        else:
+            self.content = self.content_patterns[pattern_id]
+            self.embed = self.embed_patterns[pattern_id]
+            self.embeds = self.embeds_patterns[pattern_id]
+            self.view = self.view_patterns[pattern_id]
+            self.emojis = self.emojis_patterns[pattern_id]
+
+    async def send(self, sender: discord.abc.Messageable) -> discord.Message:
+        if self.content is None:
+            if self.embed is None:
+                if self.embeds is None:
+                    raise ValueError
+                else:
+                    if self.view is None:
+                        message = await sender.send(embeds=self.embeds)
+                    else:
+                        message = await sender.send(embeds=self.embeds, view=self.view)
+            else:
+                if self.embeds is None:
+                    if self.view is None:
+                        message = await sender.send(embed=self.embed)
+                    else:
+                        message = await sender.send(embed=self.embed, view=self.view)
+                else:
+                    raise ValueError
+        else:
+            if self.embed is None:
+                if self.embeds is None:
+                    if self.view is None:
+                        message = await sender.send(content=self.content)
+                    else:
+                        message = await sender.send(content=self.content, view=self.view)
+                else:
+                    if self.view is None:
+                        message = await sender.send(content=self.content, embeds=self.embeds)
+                    else:
+                        message = await sender.send(content=self.content, embeds=self.embeds, view=self.view)
+            else:
+                if self.embeds is None:
+                    if self.view is None:
+                        message = await sender.send(content=self.content, embed=self.embed)
+                    else:
+                        message = await sender.send(content=self.content, embed=self.embed, view=self.view)
+                else:
+                    raise ValueError
+
+        if self.emojis is not None:
+            for emoji in self.emojis:
+                await message.add_reaction(emoji)
 
         return message
 
     async def reply(self, sender: discord.Message) -> discord.Message:
-        if self.embed is None:
-            if self.view is None:
-                message = await sender.reply(content=self.content, embeds=self.embeds)
+        if self.content is None:
+            if self.embed is None:
+                if self.embeds is None:
+                    raise ValueError
+                else:
+                    if self.view is None:
+                        message = await sender.reply(embeds=self.embeds)
+                    else:
+                        message = await sender.reply(embeds=self.embeds, view=self.view)
             else:
-                message = await sender.reply(content=self.content, embeds=self.embeds, view=self.view)
+                if self.embeds is None:
+                    if self.view is None:
+                        message = await sender.reply(embed=self.embed)
+                    else:
+                        message = await sender.reply(embed=self.embed, view=self.view)
+                else:
+                    raise ValueError
         else:
-            if self.view is None:
-                message = await sender.reply(content=self.content, embed=self.embed)
+            if self.embed is None:
+                if self.embeds is None:
+                    if self.view is None:
+                        message = await sender.reply(content=self.content)
+                    else:
+                        message = await sender.reply(content=self.content, view=self.view)
+                else:
+                    if self.view is None:
+                        message = await sender.reply(content=self.content, embeds=self.embeds)
+                    else:
+                        message = await sender.reply(content=self.content, embeds=self.embeds, view=self.view)
             else:
-                message = await sender.reply(content=self.content, embed=self.embed, view=self.view)
+                if self.embeds is None:
+                    if self.view is None:
+                        message = await sender.reply(content=self.content, embed=self.embed)
+                    else:
+                        message = await sender.reply(content=self.content, embed=self.embed, view=self.view)
+                else:
+                    raise ValueError
 
-        for emoji in self.emojis:
-            await message.add_reaction(emoji)
+        if self.emojis is not None:
+            for emoji in self.emojis:
+                await message.add_reaction(emoji)
 
         return message
 
     async def edit(self, sender: discord.Message) -> discord.Message:
-        if self.embed is None:
-            if self.view is None:
-                message = await sender.edit(content=self.content, embeds=self.embeds)
+        if self.content is None:
+            if self.embed is None:
+                if self.embeds is None:
+                    raise ValueError
+                else:
+                    if self.view is None:
+                        message = await sender.edit(embeds=self.embeds)
+                    else:
+                        message = await sender.edit(embeds=self.embeds, view=self.view)
             else:
-                message = await sender.edit(content=self.content, embeds=self.embeds, view=self.view)
+                if self.embeds is None:
+                    if self.view is None:
+                        message = await sender.edit(embed=self.embed)
+                    else:
+                        message = await sender.edit(embed=self.embed, view=self.view)
+                else:
+                    raise ValueError
         else:
-            if self.view is None:
-                message = await sender.edit(content=self.content, embed=self.embed)
+            if self.embed is None:
+                if self.embeds is None:
+                    if self.view is None:
+                        message = await sender.edit(content=self.content)
+                    else:
+                        message = await sender.edit(content=self.content, view=self.view)
+                else:
+                    if self.view is None:
+                        message = await sender.edit(content=self.content, embeds=self.embeds)
+                    else:
+                        message = await sender.edit(content=self.content, embeds=self.embeds, view=self.view)
             else:
-                message = await sender.edit(content=self.content, embed=self.embed, view=self.view)
+                if self.embeds is None:
+                    if self.view is None:
+                        message = await sender.edit(content=self.content, embed=self.embed)
+                    else:
+                        message = await sender.edit(content=self.content, embed=self.embed, view=self.view)
+                else:
+                    raise ValueError
 
-        for emoji in self.emojis:
-            await message.add_reaction(emoji)
+        await sender.clear_reactions()
+        if self.emojis is not None:
+            for emoji in self.emojis:
+                await message.add_reaction(emoji)
 
         return message
 

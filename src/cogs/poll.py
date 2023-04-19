@@ -9,10 +9,20 @@ from bases import base
 class Poll(base.ExCommand):
     class Runner(base.Runner):
         class PollWindow(base.ExWindow):
-            def __init__(self):
-                super().__init__(embeds=[
-                    discord.Embed(title='投票作成ツール', description='')])
-
+            def __init__(self, runner: 'Poll.Runner'):
+                embed_patterns = [
+                    discord.Embed(title='Poll', description='右下のボタンから投票を作成できます。'),
+                    discord.Embed(title='Poll', description='送信するとチャンネルに東工されます。'),
+                ]
+                view_patterns = [
+                    discord.ui.View(), discord.ui.View()
+                ]
+                view_patterns[0].add_item(Poll.Runner.AddButton(runner=runner))
+                view_patterns[0].add_item(Poll.Runner.CancelButton(runner=runner))
+                view_patterns[1].add_item(Poll.Runner.AddButton(runner=runner))
+                view_patterns[1].add_item(Poll.Runner.CancelButton(runner=runner))
+                view_patterns[1].add_item(Poll.Runner.SendButton(runner=runner))
+                super().__init__(patterns=2, embed_patterns=embed_patterns, view_patterns=view_patterns)
 
         class AddButton(discord.ui.Button):
             def __init__(self, runner: 'Poll.Runner'):
@@ -31,6 +41,14 @@ class Poll(base.ExCommand):
                 await interaction.response.send_message('canceled')
                 await self.runner.destroy()
 
+        class SendButton(discord.ui.Button):
+            def __init__(self, runner: 'Poll.Runner'):
+                super().__init__(style=discord.ButtonStyle.primary, label='send')
+                self.runner = runner
+
+            async def callback(self, interaction: discord.Interaction):
+                await interaction.response.send_message('sent')
+
         class CreatePollWindow(base.Window):
             def __init__(self):
                 super().__init__(embed=discord.Embed(
@@ -40,15 +58,14 @@ class Poll(base.ExCommand):
 
         def __init__(self, bot: discord.ext.commands.Bot, channel: discord.TextChannel):
             self.thread: typing.Union[discord.Thread, None] = None
+            self.poll_window: typing.Optional[Poll.Runner.PollWindow] = None
             super().__init__(bot=bot, channel=channel)
 
         async def run(self, author: discord.User):
             self.thread = await self.channel.create_thread(name='Poll Generator')
             await self.thread.add_user(author)
-            view = discord.ui.View()
-            view.add_item(Poll.Runner.AddButton(runner=self))
-            view.add_item(Poll.Runner.CancelButton(runner=self))
-            await self.thread.send(view=view)
+            self.poll_window = Poll.Runner.PollWindow(runner=self)
+            await self.poll_window.send(sender=self.thread)
 
         async def destroy(self):
             await self.thread.delete()
