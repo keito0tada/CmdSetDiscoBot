@@ -49,6 +49,18 @@ class Window:
         await message.edit(content=self.content, embed=self.embed, view=self.view)
 
 
+class Popups:
+    def __init__(self, modal_patterns: List[Optional[discord.ui.Modal]]):
+        self.modal_patterns = modal_patterns
+        self.modal = modal_patterns[0]
+
+    def set_pattern(self, index: int):
+        self.modal = self.modal_patterns[index]
+
+    async def response_send(self, interaction: discord.Interaction):
+        await interaction.response.send_modal(self.modal)
+
+
 class ExWindow:
     class Pattern(Enum):
         default = 0
@@ -243,6 +255,85 @@ class ExWindow:
 
         return message
 
+    async def response_send(self, interaction: discord.Interaction) -> discord.Message:
+        if self.content is None:
+            if self.embed is None:
+                if self.embeds is None:
+                    raise ValueError
+                else:
+                    if self.view is None:
+                        await interaction.response.send_message(embeds=self.embeds)
+                    else:
+                        await interaction.response.send_message(embeds=self.embeds, view=self.view)
+            else:
+                if self.embeds is None:
+                    if self.view is None:
+                        await interaction.response.send_message(embed=self.embed)
+                    else:
+                        await interaction.response.send_message(embed=self.embed, view=self.view)
+                else:
+                    raise ValueError
+        else:
+            if self.embed is None:
+                if self.embeds is None:
+                    if self.view is None:
+                        await interaction.response.send_message(content=self.content)
+                    else:
+                        await interaction.response.send_message(content=self.content, view=self.view)
+                else:
+                    if self.view is None:
+                        await interaction.response.send_message(content=self.content, embeds=self.embeds)
+                    else:
+                        await interaction.response.send_message(content=self.content, embeds=self.embeds, view=self.view)
+            else:
+                if self.embeds is None:
+                    if self.view is None:
+                        await interaction.response.send_message(content=self.content, embed=self.embed)
+                    else:
+                        await interaction.response.send_message(content=self.content, embed=self.embed, view=self.view)
+                else:
+                    raise ValueError
+
+        message = await interaction.original_response()
+        if self.emojis is not None:
+            for emoji in self.emojis:
+                await message.add_reaction(emoji)
+
+        return message
+
+    async def response_edit(self, interaction: discord.Interaction) -> discord.Message:
+        if self.content is None:
+            if self.embed is None:
+                if self.embeds is None:
+                    raise ValueError
+                else:
+                    await interaction.response.edit_message(embeds=self.embeds, view=self.view)
+            else:
+                if self.embeds is None:
+                    await interaction.response.edit_message(embed=self.embed, view=self.view)
+                else:
+                    raise ValueError
+        else:
+            if self.embed is None:
+                if self.embeds is None:
+                    await interaction.response.edit_message(content=self.content, view=self.view)
+                else:
+                    await interaction.response.edit_message(content=self.content, embeds=self.embeds, view=self.view)
+            else:
+                if self.embeds is None:
+                    await interaction.response.edit_message(content=self.content, embed=self.embed, view=self.view)
+                else:
+                    raise ValueError
+
+        message = await interaction.original_response()
+        await message.clear_reactions()
+        if self.emojis is not None:
+            for emoji in self.emojis:
+                await message.add_reaction(emoji)
+
+        return message
+
+
 
 class EditableWindow(Window):
     def set_embed(self, embed: discord.Embed) -> None:
@@ -319,7 +410,7 @@ class Command(commands.Cog):
 
 
 class ExCommand(commands.Cog):
-    def __init__(self, bot: discord.ext.commands.Bot, allow_duplicated=False, runner: Runner = None, runners: typing.List[Runner] = []):
+    def __init__(self, bot: discord.ext.commands.Bot, allow_duplicated=False, runner: Runner = None, runners: List[Runner] = []):
         self.bot = bot
         self.allow_duplicated = allow_duplicated
         self.parser = commandparser.CommandParser()
