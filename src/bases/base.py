@@ -16,39 +16,6 @@ import enum
 from enum import Enum
 
 
-class CmdSetException(Exception):
-    pass
-
-
-# super class of all windows
-# we must use when we send any messages to users
-class Window:
-    def __init__(self, content: str = None, embed: discord.Embed = None,
-                 view: discord.ui.View = None, emojis: typing.List[str] = []):
-        self.content = content
-        self.embed = embed
-        self.view = view
-        self.emojis = emojis
-
-    async def send(self, channel: discord.TextChannel) -> discord.Message:
-        message = await channel.send(content=self.content, embed=self.embed, view=self.view)
-        for emoji in self.emojis:
-            await message.add_reaction(emoji)
-        return message
-
-    async def response(self, interaction: discord.Interaction):
-        if self.view is None:
-            message = await interaction.response.send_message(content=self.content, embed=self.embed)
-        else:
-            message = await interaction.response.send_message(content=self.content, embed=self.embed, view=self.view)
-        for emoji in self.emojis:
-            await message.add_reaction(emoji)
-        return message
-
-    async def edit(self, message: discord.Message) -> None:
-        await message.edit(content=self.content, embed=self.embed, view=self.view)
-
-
 class Popups:
     def __init__(self, modal_patterns: List[Optional[discord.ui.Modal]]):
         self.modal_patterns = modal_patterns
@@ -61,21 +28,21 @@ class Popups:
         await interaction.response.send_modal(self.modal)
 
 
-class ExWindow:
+class Window:
     class Pattern(Enum):
         default = 0
         
     def __init__(self, patterns: int, content_patterns: List[Optional[str]] = None,
-                 embed_patterns: List[Optional[discord.Embed]] = None,
-                 embeds_patterns: List[Optional[List[discord.Embed]]] = None,
-                 view_patterns: List[Optional[discord.ui.View]] = None,
+                 embed_patterns: List[Optional[Dict]] = None,
+                 embeds_patterns: List[Optional[List[Dict]]] = None,
+                 view_patterns: List[Optional[List[discord.ui.Item]]] = None,
                  emojis_patterns: List[Optional[List[str]]] = None):
+        self.message: Optional[discord.Message] = None
         self.content: Optional[str] = None
         self.embed: Optional[discord.Embed] = None
         self.embeds: Optional[List[discord.Embed]] = None
         self.view: Optional[discord.ui.View] = None
         self.emojis: Optional[List[str]] = None
-
         self.patterns = patterns
         if content_patterns is None:
             self.content_patterns = [None for i in range(patterns)]
@@ -114,9 +81,11 @@ class ExWindow:
             raise ValueError
         else:
             self.content = self.content_patterns[pattern_id]
-            self.embed = self.embed_patterns[pattern_id]
-            self.embeds = self.embeds_patterns[pattern_id]
-            self.view = self.view_patterns[pattern_id]
+            self.embed = discord.Embed.from_dict(self.embed_patterns[pattern_id])
+            self.embeds = [discord.Embed.from_dict(i) for i in self.embeds_patterns[pattern_id]]
+            self.view = discord.ui.View()
+            for item in self.view_patterns[pattern_id]:
+                self.view.add_item(item=item)
             self.emojis = self.emojis_patterns[pattern_id]
 
     async def send(self, sender: discord.abc.Messageable) -> discord.Message:
@@ -215,36 +184,21 @@ class ExWindow:
                 if self.embeds is None:
                     raise ValueError
                 else:
-                    if self.view is None:
-                        message = await sender.edit(embeds=self.embeds)
-                    else:
-                        message = await sender.edit(embeds=self.embeds, view=self.view)
+                    message = await sender.edit(embeds=self.embeds, view=self.view)
             else:
                 if self.embeds is None:
-                    if self.view is None:
-                        message = await sender.edit(embed=self.embed)
-                    else:
-                        message = await sender.edit(embed=self.embed, view=self.view)
+                    message = await sender.edit(embed=self.embed, view=self.view)
                 else:
                     raise ValueError
         else:
             if self.embed is None:
                 if self.embeds is None:
-                    if self.view is None:
-                        message = await sender.edit(content=self.content)
-                    else:
-                        message = await sender.edit(content=self.content, view=self.view)
+                    message = await sender.edit(content=self.content, view=self.view)
                 else:
-                    if self.view is None:
-                        message = await sender.edit(content=self.content, embeds=self.embeds)
-                    else:
-                        message = await sender.edit(content=self.content, embeds=self.embeds, view=self.view)
+                    message = await sender.edit(content=self.content, embeds=self.embeds, view=self.view)
             else:
                 if self.embeds is None:
-                    if self.view is None:
-                        message = await sender.edit(content=self.content, embed=self.embed)
-                    else:
-                        message = await sender.edit(content=self.content, embed=self.embed, view=self.view)
+                    message = await sender.edit(content=self.content, embed=self.embed, view=self.view)
                 else:
                     raise ValueError
 
@@ -334,62 +288,37 @@ class ExWindow:
         return message
 
 
-
-class EditableWindow(Window):
-    def set_embed(self, embed: discord.Embed) -> None:
-        self.embed = embed
-
-    def set_view(self, view: discord.ui.View) -> None:
-        self.view = view
-
-
-class WindowManager(commands.Cog):
-    class Windows:
-        def __init__(self, default: Window, executing=Window(embed=discord.Embed(
-                    title='Error', description='このコマンドは現在実行中です。新たに実行はできません。', color=discord.Color.red()
-                ))):
-            self.default = default
-            self.executing = executing
-
-    def __init__(self, bot: discord.ext.commands.Bot, channel: discord.TextChannel, windows: Windows):
-        self.bot = bot
-        self.guild = channel.guild
-        self.channel = channel
-        self.windows = windows
-        self.messages: typing.List[discord.Message] = []
-
-    # this method must be called once only when an instance is initialized
-    async def init(self, override=False) -> None:
-        if override:
-            await self.bot.add_cog(self, guild=self.guild, override=True)
-            self.messages.append(await self.windows.default.send(self.channel))
-        else:
-            try:
-                await self.bot.add_cog(self, guild=self.guild)
-            except discord.ClientException:
-                await self.windows.executing.send(self.channel)
-            else:
-                self.messages.append(await self.windows.default.send(self.channel))
-
-    async def destroy(self) -> None:
-        await self.bot.remove_cog(self.qualified_name, guild=self.guild)
-
-    @commands.Cog.listener()
-    async def on_reaction_add(self, reaction: discord.Reaction, user: Union[discord.Member, discord.User]):
-        pass
-
-
 class Runner(commands.Cog):
-    def __init__(self, bot: discord.ext.commands.Bot, channel: discord.TextChannel):
-        self.bot = bot
-        self.guild = channel.guild
+    def __init__(self, channel: discord.TextChannel, timeout: float = 3.0):
         self.channel = channel
+        self.timeout = timeout
 
     async def destroy(self):
         pass
 
+    async def timeout_check(self, minutes: float) -> bool:
+        self.timeout -= minutes
+        if self.timeout <= 0:
+            await self.destroy()
+            return True
+        else:
+            return False
 
-# button used on class Runner
+
+class Command(commands.Cog):
+    MINUTES = 3.0
+
+    def __init__(self, bot: discord.ext.commands.Bot, allow_duplicated=False):
+        self.bot = bot
+        self.allow_duplicated = allow_duplicated
+        self.parser = commandparser.CommandParser()
+        self.runners: List[Runner] = []
+
+    @tasks.loop(minutes=MINUTES)
+    async def timeout_check(self):
+        self.runners = [runner for runner in self.runners if await runner.timeout_check(minutes=Command.MINUTES)]
+
+
 class Button(discord.ui.Button):
     def __init__(self, runner: Runner, style: discord.ButtonStyle = None, label: Optional[str] = None, disabled=False,
                  custom_id: Optional[str] = None, url: Optional[str] = None,
@@ -399,20 +328,12 @@ class Button(discord.ui.Button):
         self.runner = runner
 
 
-# super class of all commands
-class Command(commands.Cog):
-    def __init__(self, bot: discord.ext.commands.Bot, allow_duplicated=False):
-        self.bot = bot
-        self.allow_duplicated = allow_duplicated
-        # command parser
-        self.parser = commandparser.CommandParser()
-        self.window_manager: Union[WindowManager, None] = None
-
-
-class ExCommand(commands.Cog):
-    def __init__(self, bot: discord.ext.commands.Bot, allow_duplicated=False, runner: Runner = None, runners: List[Runner] = []):
-        self.bot = bot
-        self.allow_duplicated = allow_duplicated
-        self.parser = commandparser.CommandParser()
+class View(discord.ui.View):
+    def __init__(self, runner: Runner):
+        super().__init__(timeout=None)
         self.runner = runner
-        self.runners = runners
+
+    async def on_timeout(self) -> None:
+        await self.runner.destroy()
+
+

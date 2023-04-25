@@ -7,9 +7,9 @@ from discord.ext import commands
 from bases import base
 
 
-class Poll(base.ExCommand):
+class Poll(base.Command):
     class Runner(base.Runner):
-        class EditPollWindow(base.ExWindow):
+        class EditPollWindow(base.Window):
             def __init__(self, runner: 'Poll.Runner'):
                 embed_patterns = [
                     discord.Embed(title='Poll', description='右下のボタンから投票を作成できます。'),
@@ -26,7 +26,7 @@ class Poll(base.ExCommand):
                 view_patterns[1].add_item(Poll.Runner.SendButton(runner=runner))
                 super().__init__(patterns=3, embed_patterns=embed_patterns, view_patterns=view_patterns)
 
-        class SamplePollWindow(base.ExWindow):
+        class SamplePollWindow(base.Window):
             def __init__(self, runner: 'Poll.Runner'):
                 embed_patterns = [
                     discord.Embed(title='title', description='description')

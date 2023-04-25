@@ -14,7 +14,7 @@ import zoneinfo
 DATABASE_URL = os.getenv('DATABASE_URL')
 
 
-class InputValueError(base.CmdSetException):
+class InputValueError(Exception):
     pass
 
 
@@ -80,5 +80,5 @@ class Schedule(base.Command):
             await channel.send(embed=embed)
 
 
-async def setup(bot: commands.Bot):
+ async def setup(bot: commands.Bot):
     await bot.add_cog(Schedule(bot=bot))
