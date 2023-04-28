@@ -81,12 +81,21 @@ class Window:
             raise ValueError
         else:
             self.content = self.content_patterns[pattern_id]
-            self.embed = discord.Embed.from_dict(self.embed_patterns[pattern_id])
-            self.embeds = [discord.Embed.from_dict(i) for i in self.embeds_patterns[pattern_id]]
+            if self.embed_patterns[pattern_id] is None:
+                self.embed = None
+            else:
+                self.embed = discord.Embed.from_dict(self.embed_patterns[pattern_id])
+            if self.embeds_patterns[pattern_id] is None:
+                self.embeds = None
+            else:
+                self.embeds = [discord.Embed.from_dict(i) for i in self.embeds_patterns[pattern_id]]
             self.view = discord.ui.View()
             for item in self.view_patterns[pattern_id]:
                 self.view.add_item(item=item)
             self.emojis = self.emojis_patterns[pattern_id]
+
+    async def destroy(self):
+        self.view.stop()
 
     async def send(self, sender: discord.abc.Messageable) -> discord.Message:
         if self.content is None:
@@ -292,6 +301,9 @@ class Runner(commands.Cog):
     def __init__(self, channel: discord.TextChannel, timeout: float = 3.0):
         self.channel = channel
         self.timeout = timeout
+
+    async def run(self):
+        pass
 
     async def destroy(self):
         pass

@@ -21,8 +21,8 @@ class PoopWindow(base.Window):
 
     def __init__(self, runner: 'PoopGenerator.Runner'):
         super().__init__(patterns=2, content_patterns=[None, ':poop:'], embed_patterns=[
-            {'title?': 'Poop Generator', 'description?': 'Poopを生成できます。',
-             'thumbnail?': 'https://emojipedia-us.s3.dualstack.us-west-1.amazonaws.com/thumbs/240/twitter/322/pile-of-poo_1f4a9.png'},
+            {'title': 'Poop Generator', 'description': 'Poopを生成できます。',
+             'thumbnail': 'https://emojipedia-us.s3.dualstack.us-west-1.amazonaws.com/thumbs/240/twitter/322/pile-of-poo_1f4a9.png'},
             None
         ], view_patterns=[[
             PoopWindow.GenerateButton(runner=runner, style=discord.ButtonStyle.primary)
@@ -33,10 +33,11 @@ class PoopGenerator(base.Command):
     class Runner(base.Runner):
         def __init__(self, channel: discord.TextChannel):
             super().__init__(channel=channel)
+            self.channel = channel
             self.window = PoopWindow(runner=self)
 
-        def destroy(self):
-            pass
+        async def run(self):
+            await self.window.send(sender=self.channel)
 
     def __init__(self, bot):
         super().__init__(bot=bot)
