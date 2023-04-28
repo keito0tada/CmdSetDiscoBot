@@ -13,7 +13,7 @@ import os
 
 #DATABASE_URL = os.getenv('DATABASE_URL')
 ZONE_TOKYO = zoneinfo.ZoneInfo('Asia/Tokyo')
-TIME = datetime.time(hour=16, minute=51, tzinfo=ZONE_TOKYO)
+TIME = datetime.time(hour=0, minute=5, tzinfo=ZONE_TOKYO)
 
 
 class Progress(base.Command):
