@@ -44,7 +44,9 @@ class PoopGenerator(base.Command):
 
     @commands.command()
     async def poop(self, ctx: commands.Context):
-        self.runners.append(PoopGenerator.Runner(channel=ctx.channel))
+        runner = PoopGenerator.Runner(channel=ctx.channel)
+        await runner.run()
+        self.runners.append(runner)
 
 
 async def setup(bot: discord.ext.commands.Bot):

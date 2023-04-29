@@ -15,14 +15,19 @@ class JankenWindow(base.Window):
     class HandButton(discord.ui.Button):
         emojis = ['\N{Fisted Hand Sign}', '\N{Victory Hand}', '\N{Raised Hand}']
 
-        def __init__(self, runner: 'Janken.Runner', index: int):
+        def __init__(self, runner: 'Janken.Runner', index: int, pattern_id: int):
+            super().__init__(emoji=self.emojis[index])
             self.runner = runner
             self.index = index
-            super().__init__(emoji=self.emojis[index])
+            self.pattern_id = pattern_id
 
         async def callback(self, interaction: discord.Interaction):
-            if await self.runner.hand(index=self.index, user_id=interaction.user.id):
-                self.runner.janken_window.embed.add_field(name=interaction.user.name, value='')
+            self.runner.hand(index=self.index, user=interaction.user)
+            self.runner.janken_window.set_pattern(pattern_id=self.pattern_id)
+            fields = []
+            for name in self.runner.participants:
+                fields.append({'name': name, 'value': '', 'inline': True})
+            self.runner.janken_window.embed_dict.setdefault('fields', fields)
             await self.runner.janken_window.response_edit(interaction=interaction)
 
     class EndButton(discord.ui.Button):
@@ -34,13 +39,13 @@ class JankenWindow(base.Window):
             state = await self.runner.check()
             if Janken.State.rock_win <= state <= Janken.State.paper_win:
                 self.runner.janken_window.set_pattern(pattern_id=state + 1)
-                self.runner.janken_window.embed.clear_fields()
+                fields = []
                 for member in self.runner.channel.members:
                     if member.id in self.runner.victors:
-                        self.runner.janken_window.embed.add_field(name=member.name, value='')
+                        fields.append({'name': member.name, 'value': ''})
+                self.runner.janken_window.embed_dict.setdefault('fields',fields)
             elif Janken.State.rock_draw <= state <= Janken.State.draw:
                 self.runner.janken_window.set_pattern(pattern_id=4)
-                self.runner.janken_window.embed.clear_fields()
             await self.runner.janken_window.response_edit(interaction=interaction)
 
     class NextButton(discord.ui.Button):
@@ -65,18 +70,18 @@ class JankenWindow(base.Window):
                 {'url': 'https://em-content.zobj.net/thumbs/240/twitter/322/thinking-face_1f914.png'}}
         ], view_patterns=[
             [
-                JankenWindow.HandButton(runner=runner, index=0),
-                JankenWindow.HandButton(runner=runner, index=1),
-                JankenWindow.HandButton(runner=runner, index=2),
+                JankenWindow.HandButton(runner=runner, index=0, pattern_id=0),
+                JankenWindow.HandButton(runner=runner, index=1, pattern_id=0),
+                JankenWindow.HandButton(runner=runner, index=2, pattern_id=0),
                 JankenWindow.EndButton(runner=runner)
             ],
             [JankenWindow.NextButton(runner=runner)],
             [JankenWindow.NextButton(runner=runner)],
             [JankenWindow.NextButton(runner=runner)],
             [
-                JankenWindow.HandButton(runner=runner, index=0),
-                JankenWindow.HandButton(runner=runner, index=1),
-                JankenWindow.HandButton(runner=runner, index=2),
+                JankenWindow.HandButton(runner=runner, index=0, pattern_id=4),
+                JankenWindow.HandButton(runner=runner, index=1, pattern_id=4),
+                JankenWindow.HandButton(runner=runner, index=2, pattern_id=4),
                 JankenWindow.EndButton(runner=runner)
             ]
         ])
@@ -98,6 +103,7 @@ class Janken(base.Command):
             super().__init__(channel=channel)
             self.command = command
             self.janken_window = JankenWindow(runner=self)
+            self.participants: List[str] = []
             self.hands: List[List[int]] = [[] for i in range(3)]
             self.result = Janken.State.default
             self.victors: List[int] = []
@@ -112,19 +118,20 @@ class Janken(base.Command):
         async def response_run(self, interaction: discord.Interaction):
             await self.janken_window.response_send(interaction=interaction)
 
-        async def hand(self, index: int, user_id: int) -> bool:
+        def hand(self, index: int, user: discord.User):
+            if user.name not in self.participants:
+                self.participants.append(user.name)
             for i in range(3):
-                if user_id in self.hands[i]:
-                    self.hands[i].remove(user_id)
-                    self.hands[index].append(user_id)
-                    return False
-            self.hands[index].append(user_id)
-            return True
+                if user.id in self.hands[i]:
+                    self.hands[i].remove(user.id)
+                    self.hands[index].append(user.id)
+            self.hands[index].append(user.id)
 
         async def score(self):
             pass
 
         async def check(self):
+            self.participants = []
             self.victors = []
             cnt_participants: int = sum(len(l) for l in self.hands)
             for i in range(3):
