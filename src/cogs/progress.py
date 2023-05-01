@@ -175,7 +175,7 @@ class ProgressWindow(base.Window):
             {'title': '追加 完了'},
             {'title': '変更 完了'},
             {'title': '削除 完了'},
-            {'title': '進捗報告 監視', 'description': '設定したチャンネルに進捗報告があるか監視します。指定した期間内に報告がない場合はメンションが飛びます。また一定回数報告がない場合はこのサーバーからBanされます。'}
+            {'title': '進捗報告 監視', 'description': '設定したチャンネルに進捗報告があるか監視します。指定した期間内に報告がない場合はメンションが飛びます。また一定回数報告がない場合はこのサーバーからBanされます。'},
             {'title': '進捗報告　状況', 'description': 'メンバーの進捗報告状況が確認できます。'}
         ], view_patterns=[
             [SettingChannelSelect(runner=runner), BackMenuButton(runner=runner)],
