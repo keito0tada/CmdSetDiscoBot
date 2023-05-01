@@ -344,7 +344,7 @@ class Runner(base.Runner):
         ban = 0
         if len(results) == 0:
             with self.database_connector.cursor() as cur:
-                cur.execute('INSERT INTO progress_mebers (user_id, total, streak, escape, hp, ban) VALUES (%s, %s, %s, %s, %s, %s)',
+                cur.execute('INSERT INTO progress_members (user_id, total, streak, escape, hp, ban) VALUES (%s, %s, %s, %s, %s, %s)',
                             (values[0].id, total, streak, escape, hp, ban))
                 self.database_connector.commit()
         elif len(results) == 1:
