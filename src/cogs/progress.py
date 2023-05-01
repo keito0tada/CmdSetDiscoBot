@@ -455,6 +455,8 @@ class Progress(base.Command):
                         cur.execute('SELECT escape, hp, kick FROM progress_members WHERE user_id = %s',
                                     (member.id, ))
                         result = cur.fetchone()
+                        print(result)
+                        self.database_connector.commit()
                         if result[1] - 1 > 0:
                             cur.execute(
                                 'UPDATE progress_members SET streak = %s, escape = %s, hp = %s WHERE user_id = %s',
