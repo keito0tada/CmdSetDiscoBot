@@ -22,7 +22,7 @@ class PoopWindow(base.Window):
     def __init__(self, runner: 'PoopGenerator.Runner'):
         super().__init__(patterns=2, content_patterns=[None, ':poop:'], embed_patterns=[
             {'title': 'Poop Generator', 'description': 'Poopを生成できます。',
-             'thumbnail': 'https://emojipedia-us.s3.dualstack.us-west-1.amazonaws.com/thumbs/240/twitter/322/pile-of-poo_1f4a9.png'},
+             'thumbnail': {'url': 'https://emojipedia-us.s3.dualstack.us-west-1.amazonaws.com/thumbs/240/twitter/322/pile-of-poo_1f4a9.png'}},
             None
         ], view_patterns=[[
             PoopWindow.GenerateButton(runner=runner, style=discord.ButtonStyle.primary)

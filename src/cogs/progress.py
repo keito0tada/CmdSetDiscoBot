@@ -113,6 +113,15 @@ class BackButton(discord.ui.Button):
         await self.runner.back(interaction=interaction)
 
 
+class DeleteButton(discord.ui.Button):
+    def __init__(self, runner: 'Runner'):
+        super().__init__(label='削除', style=discord.ButtonStyle.danger)
+        self.runner = runner
+
+    async def callback(self, interaction: discord.Interaction):
+        await self.runner.delete(interaction=interaction)
+
+
 class ProgressWindow(base.Window):
     def __init__(self, runner: 'Runner'):
         super().__init__(patterns=4, embed_patterns=[
@@ -120,14 +129,16 @@ class ProgressWindow(base.Window):
              'description': '進捗報告用のチャンネルを設定できます。進捗報告がないメンバーには催促のメンションが飛びます。'},
             {'title': '追加', 'description': '時間を指定して追加できます。'},
             {'title': '変更', 'description': '時間を変更できます。'},
-            {'title': '完了'}
+            {'title': '追加完了'},
+            {'title': '削除完了'}
         ], view_patterns=[
             [SettingChannelSelect(runner=runner)],
             [IntervalDaysSelect(runner=runner), HourSelect(runner=runner), MinuteSelect(runner=runner),
              NextDaySelect(runner=runner), AddButton(runner=runner), BackButton(runner=runner)],
             [IntervalDaysSelect(runner=runner), HourSelect(runner=runner), MinuteSelect(runner=runner),
-             NextDaySelect(runner=runner), AddButton(runner=runner), BackButton(runner=runner)],
-            [BackButton(runner=runner)]
+             NextDaySelect(runner=runner), AddButton(runner=runner), BackButton(runner=runner),
+             DeleteButton(runner=runner)],
+            [BackButton(runner=runner)], [BackButton(runner=runner)]
         ])
 
 
@@ -197,6 +208,11 @@ class Runner(base.Runner):
             print(self.command.printer.is_running())
             print(self.command.printer.next_iteration)
             self.progress_window.set_pattern(3)
+            self.progress_window.embed_dict['fields'] = [
+                {'name': '送信する間隔', 'value': '{}日ごと'.format(self.interval_days)},
+                {'name': '送信する時刻', 'value': '{0}時{1}分'.format(self.hour, self.minute)},
+                {'name': '次に送信される日付', 'value': str(self.next_date)}
+            ]
         await self.progress_window.response_edit(interaction=interaction)
 
     async def edit(self, interaction: discord.Interaction):
@@ -211,10 +227,27 @@ class Runner(base.Runner):
         self.command.delete_interval(hour=self.prev_hour, minute=self.prev_minute)
         self.command.add_interval(hour=self.hour, minute=self.minute)
         self.progress_window.set_pattern(3)
+        self.progress_window.embed_dict['fields'] = [
+            {'name': '送信する間隔', 'value': '{}日ごと'.format(self.interval_days)},
+            {'name': '送信する時刻', 'value': '{0}時{1}分'.format(self.hour, self.minute)},
+            {'name': '次に送信される日付', 'value': str(self.next_date)}
+        ]
         await self.progress_window.response_edit(interaction=interaction)
 
     async def back(self, interaction: discord.Interaction):
         self.progress_window.set_pattern(0)
+        await self.progress_window.response_edit(interaction=interaction)
+
+    async def delete(self, interaction: discord.Interaction):
+        with self.database_connector.cursor() as cur:
+            cur.execute('DELETE FROM progress WHERE channel_id = %s', (self.chosen_channel.id, ))
+            self.database_connector.commit()
+        self.progress_window.set_pattern(4)
+        self.progress_window.embed_dict['fields'] = [
+            {'name': '送信する間隔', 'value': '{}日ごと'.format(self.interval_days)},
+            {'name': '送信する時刻', 'value': '{0}時{1}分'.format(self.hour, self.minute)},
+            {'name': '次に送信される日付', 'value': str(self.next_date)}
+        ]
         await self.progress_window.response_edit(interaction=interaction)
 
 
