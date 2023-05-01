@@ -201,7 +201,8 @@ class ProgressWindow(base.Window):
              NextDaySelect(runner=runner), EditButton(runner=runner), BackButton(runner=runner),
              DeleteButton(runner=runner)],
             [BackButton(runner=runner)], [BackButton(runner=runner)], [BackButton(runner=runner)],
-            [MembersButton(runner=runner), SettingButton(runner=runner)], [BackMenuButton(runner=runner)]
+            [MembersButton(runner=runner), SettingButton(runner=runner)],
+            [MemberSelect(runner=runner), BackMenuButton(runner=runner)]
         ])
 
 
@@ -349,6 +350,8 @@ class Runner(base.Runner):
         elif len(results) == 1:
             total, streak, escape, hp, ban = results[0]
         self.progress_window.set_pattern(pattern_id=ProgressWindow.WindowID.MEMBER)
+        self.progress_window.embed_dict['title'] = '**{}**'.format(values[0].name)
+        self.progress_window.embed_dict['thumbnail'] = {'url': values[0].avatar}
         self.progress_window.embed_dict['fields'] = [
             {'name': '報告回数', 'value': '{}回'.format(total)},
             {'name': '現在の連続回数', 'value': '{}回'.format(streak)},
