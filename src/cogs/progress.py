@@ -496,7 +496,7 @@ class Progress(base.Command):
                 if len(escape_members) > 0:
                     mentions = ''
                     for member in escape_members:
-                        mentions = '{0} {1}'.format(mentions, member.name)
+                        mentions = '{0} {1}'.format(mentions, member.mention)
                     embed = discord.Embed(title='進捗どうですか？', description=mentions, colour=discord.Color.orange())
                     embed.set_thumbnail(url='https://em-content.zobj.net/thumbs/240/twitter/322/thinking-face_1f914.png')
                     if max_streak[0] > 0:
