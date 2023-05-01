@@ -310,6 +310,7 @@ class Runner(base.Runner):
         with self.database_connector.cursor() as cur:
             cur.execute('DELETE FROM progress WHERE channel_id = %s', (self.chosen_channel.id,))
             self.database_connector.commit()
+        self.command.change_printer_interval()
         self.progress_window.set_pattern(pattern_id=ProgressWindow.WindowID.DELETED)
         await self.progress_window.response_edit(interaction=interaction)
 
@@ -371,14 +372,7 @@ class Progress(base.Command):
             cur.execute(
                 'CREATE TABLE IF NOT EXISTS progress (channel_id BIGINT, interval_days SMALLINT, hour SMALLINT, minute SMALLINT, date DATE)')
             self.database_connector.commit()
-        with self.database_connector.cursor() as cur:
-            cur.execute('SELECT hour, minute FROM progress')
-            results = cur.fetchall()
-            self.database_connector.commit()
-        new_times = [TIME]
-        for hour, minute in results:
-            new_times.append(datetime.time(hour=hour, minute=minute, tzinfo=ZONE_TOKYO))
-        self.printer.change_interval(time=new_times)
+        self.change_printer_interval()
 
         with self.database_connector.cursor() as cur:
             cur.execute(
@@ -393,6 +387,7 @@ class Progress(base.Command):
             results = cur.fetchall()
         new_time = [datetime.time(hour=hour, minute=minute, tzinfo=ZONE_TOKYO) for hour, minute in results]
         self.printer.change_interval(time=new_time)
+        print('printer next iteration is {}'.format(self.printer.next_iteration))
         print(self.printer.time)
 
     @commands.command()
