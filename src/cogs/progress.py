@@ -410,7 +410,8 @@ class Progress(base.Command):
 
     @commands.command()
     async def progress(self, ctx: commands.Context):
-        await ctx.channel.create_invite()
+        invite = await ctx.channel.create_invite()
+        await ctx.author.send(content=invite.url)
         print(self.printer.time)
         self.runners.append(Runner(command=self, channel=ctx.channel, database_connector=self.database_connector))
         await self.runners[len(self.runners) - 1].run()
