@@ -122,6 +122,7 @@ class DeleteButton(discord.ui.Button):
     async def callback(self, interaction: discord.Interaction):
         await self.runner.delete(interaction=interaction)
 
+
 class MembersButton(discord.ui.Button):
     def __init__(self, runner: 'Runner'):
         super().__init__(label='報告状況', style=discord.ButtonStyle.primary)
@@ -129,6 +130,7 @@ class MembersButton(discord.ui.Button):
 
     async def callback(self, interaction: discord.Interaction):
         await self.runner.member(interaction=interaction)
+
 
 class SettingButton(discord.ui.Button):
     def __init__(self, runner: 'Runner'):
@@ -138,6 +140,7 @@ class SettingButton(discord.ui.Button):
     async def callback(self, interaction: discord.Interaction):
         await self.runner.setting(interaction=interaction)
 
+
 class BackMenuButton(discord.ui.Button):
     def __init__(self, runner: 'Runner'):
         super().__init__(label='戻る', style=discord.ButtonStyle.secondary)
@@ -145,6 +148,7 @@ class BackMenuButton(discord.ui.Button):
 
     async def callback(self, interaction: discord.Interaction):
         await self.runner.back_menu(interaction=interaction)
+
 
 class MemberSelect(discord.ui.UserSelect):
     def __init__(self, runner: 'Runner'):
@@ -185,7 +189,7 @@ class ProgressWindow(base.Window):
              NextDaySelect(runner=runner), EditButton(runner=runner), BackButton(runner=runner),
              DeleteButton(runner=runner)],
             [BackButton(runner=runner)], [BackButton(runner=runner)], [BackButton(runner=runner)],
-            [MembersButton(runner=runner), SettingButton(runner=runner)]
+            [MembersButton(runner=runner), SettingButton(runner=runner)], [BackButton(runner=runner)]
         ])
 
 
@@ -204,7 +208,7 @@ class Runner(base.Runner):
         self.next_date: Optional[datetime.date] = None
 
     async def run(self):
-        self.progress_window.set_pattern(pattern_id=ProgressWindow.WindowID.SETTING)
+        self.progress_window.set_pattern(pattern_id=ProgressWindow.WindowID.MENU)
         await self.progress_window.send(sender=self.channel)
 
     async def select_channel(self, values: List[discord.app_commands.AppCommandChannel],
