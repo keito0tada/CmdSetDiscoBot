@@ -2,7 +2,7 @@ import zoneinfo
 
 import discord
 from discord.ext import commands, tasks
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Union
 import psycopg2
 import psycopg2.extras
 import datetime
@@ -24,14 +24,14 @@ class SettingChannelSelect(discord.ui.ChannelSelect):
 
     async def callback(self, interaction: discord.Interaction):
         await self.runner.select_channel(values=self.values, interaction=interaction)
-        
+
 
 class IntervalDaysSelect(discord.ui.Select):
     FORMAT = '{}.interval_days_select'
 
     def __init__(self, runner: 'Runner'):
-        options = [discord.SelectOption(label='毎日', value=self.FORMAT.format(1))] +\
-                  [discord.SelectOption(label='{}日ごと'.format(i), value=self.FORMAT.format(i)) for i in range(2, 7)] +\
+        options = [discord.SelectOption(label='毎日', value=self.FORMAT.format(1))] + \
+                  [discord.SelectOption(label='{}日ごと'.format(i), value=self.FORMAT.format(i)) for i in range(2, 7)] + \
                   [discord.SelectOption(label='1週間ごと', value=self.FORMAT.format(7))]
         super().__init__(placeholder='送信する間隔', options=options)
         self.runner = runner
@@ -76,7 +76,8 @@ class NextDaySelect(discord.ui.Select):
     def __init__(self, runner: 'Runner'):
         now = datetime.datetime.now(tz=ZONE_TOKYO)
         super().__init__(placeholder='最初に送信される日', options=[
-            discord.SelectOption(label='{}'.format((now + datetime.timedelta(days=i)).date()), value=(now + datetime.timedelta(days=i)).date().strftime('%Y:%m:%d')) for i in range(7)
+            discord.SelectOption(label='{}'.format((now + datetime.timedelta(days=i)).date()),
+                                 value=(now + datetime.timedelta(days=i)).date().strftime('%Y:%m:%d')) for i in range(7)
         ])
         self.runner = runner
 
@@ -121,6 +122,38 @@ class DeleteButton(discord.ui.Button):
     async def callback(self, interaction: discord.Interaction):
         await self.runner.delete(interaction=interaction)
 
+class MembersButton(discord.ui.Button):
+    def __init__(self, runner: 'Runner'):
+        super().__init__(label='報告状況', style=discord.ButtonStyle.primary)
+        self.runner = runner
+
+    async def callback(self, interaction: discord.Interaction):
+        await self.runner.member(interaction=interaction)
+
+class SettingButton(discord.ui.Button):
+    def __init__(self, runner: 'Runner'):
+        super().__init__(label='設定', style=discord.ButtonStyle.primary)
+        self.runner = runner
+
+    async def callback(self, interaction: discord.Interaction):
+        await self.runner.setting(interaction=interaction)
+
+class BackMenuButton(discord.ui.Button):
+    def __init__(self, runner: 'Runner'):
+        super().__init__(label='戻る', style=discord.ButtonStyle.secondary)
+        self.runner = runner
+
+    async def callback(self, interaction: discord.Interaction):
+        await self.runner.back_menu(interaction=interaction)
+
+class MemberSelect(discord.ui.UserSelect):
+    def __init__(self, runner: 'Runner'):
+        super().__init__(placeholder='メンバー')
+        self.runner = runner
+
+    async def callback(self, interaction: discord.Interaction):
+        pass
+
 
 class ProgressWindow(base.Window):
     class WindowID(enum.IntEnum):
@@ -130,24 +163,29 @@ class ProgressWindow(base.Window):
         ADDED = 3
         EDITED = 4
         DELETED = 5
+        MENU = 6
+        MEMBERS = 7
 
     def __init__(self, runner: 'Runner'):
-        super().__init__(patterns=5, embed_patterns=[
+        super().__init__(patterns=8, embed_patterns=[
             {'title': '進捗報告チャンネル　設定',
              'description': '進捗報告用のチャンネルを設定できます。進捗報告がないメンバーには催促のメンションが飛びます。'},
             {'title': '追加', 'description': '時間を指定して追加できます。'},
             {'title': '変更', 'description': '時間を変更できます。'},
             {'title': '追加 完了'},
             {'title': '変更 完了'},
-            {'title': '削除 完了'}
+            {'title': '削除 完了'},
+            {'title': '進捗報告 監視', 'description': '設定したチャンネルに進捗報告があるか監視します。指定した期間内に報告がない場合はメンションが飛びます。また一定回数報告がない場合はこのサーバーからBanされます。'}
+            {'title': '進捗報告　状況', 'description': 'メンバーの進捗報告状況が確認できます。'}
         ], view_patterns=[
-            [SettingChannelSelect(runner=runner)],
+            [SettingChannelSelect(runner=runner), BackMenuButton(runner=runner)],
             [IntervalDaysSelect(runner=runner), HourSelect(runner=runner), MinuteSelect(runner=runner),
              NextDaySelect(runner=runner), AddButton(runner=runner), BackButton(runner=runner)],
             [IntervalDaysSelect(runner=runner), HourSelect(runner=runner), MinuteSelect(runner=runner),
              NextDaySelect(runner=runner), EditButton(runner=runner), BackButton(runner=runner),
              DeleteButton(runner=runner)],
-            [BackButton(runner=runner)], [BackButton(runner=runner)]
+            [BackButton(runner=runner)], [BackButton(runner=runner)], [BackButton(runner=runner)],
+            [MembersButton(runner=runner), SettingButton(runner=runner)]
         ])
 
 
@@ -166,14 +204,16 @@ class Runner(base.Runner):
         self.next_date: Optional[datetime.date] = None
 
     async def run(self):
+        self.progress_window.set_pattern(pattern_id=ProgressWindow.WindowID.SETTING)
         await self.progress_window.send(sender=self.channel)
 
-    async def select_channel(self, values: List[discord.app_commands.AppCommandChannel], interaction: discord.Interaction):
+    async def select_channel(self, values: List[discord.app_commands.AppCommandChannel],
+                             interaction: discord.Interaction):
         assert len(values) == 1
         self.chosen_channel = values[0].resolve()
         with self.database_connector.cursor() as cur:
             cur.execute('SELECT interval_days, hour, minute, date FROM progress WHERE channel_id = %s',
-                        (self.chosen_channel.id, ))
+                        (self.chosen_channel.id,))
             results = cur.fetchall()
             self.database_connector.commit()
         if len(results) == 0:
@@ -206,12 +246,16 @@ class Runner(base.Runner):
             self.progress_window.embed_dict['fields'] = [{'name': 'エラー', 'value': '要素をすべて選択してください。'}]
         else:
             with self.database_connector.cursor() as cur:
-                cur.execute('SELECT channel_id FROM progress WHERE channel_id = %s', (self.chosen_channel.id, ))
+                cur.execute('SELECT channel_id FROM progress WHERE channel_id = %s', (self.chosen_channel.id,))
                 results = cur.fetchall()
                 if len(results) == 0:
-                    cur.execute('INSERT INTO progress (channel_id, interval_days, hour, minute, date) VALUES (%s, %s, %s, %s, %s)', (self.chosen_channel.id, self.interval_days, self.hour, self.minute, self.next_date))
+                    cur.execute(
+                        'INSERT INTO progress (channel_id, interval_days, hour, minute, date) VALUES (%s, %s, %s, %s, %s)',
+                        (self.chosen_channel.id, self.interval_days, self.hour, self.minute, self.next_date))
                 else:
-                    cur.execute('UPDATE progress SET interval_days = %s, hour = %s, minute = %s, date = %s WHERE channel_id = %s', (self.interval_days, self.hour, self.minute, self.next_date, self.chosen_channel.id))
+                    cur.execute(
+                        'UPDATE progress SET interval_days = %s, hour = %s, minute = %s, date = %s WHERE channel_id = %s',
+                        (self.interval_days, self.hour, self.minute, self.next_date, self.chosen_channel.id))
                 self.database_connector.commit()
             self.command.add_interval(hour=self.hour, minute=self.minute)
             print(self.command.printer.is_running())
@@ -226,12 +270,16 @@ class Runner(base.Runner):
 
     async def edit(self, interaction: discord.Interaction):
         with self.database_connector.cursor() as cur:
-            cur.execute('SELECT channel_id FROM progress WHERE channel_id = %s', (self.chosen_channel.id, ))
+            cur.execute('SELECT channel_id FROM progress WHERE channel_id = %s', (self.chosen_channel.id,))
             results = cur.fetchall()
             if len(results) == 0:
-                cur.execute('INSERT INTO progress (channel_id, interval_days, hour, minute, date) VALUES (%s, %s, %s, %s, %s)', (self.chosen_channel.id, self.interval_days, self.hour, self.minute, self.next_date))
+                cur.execute(
+                    'INSERT INTO progress (channel_id, interval_days, hour, minute, date) VALUES (%s, %s, %s, %s, %s)',
+                    (self.chosen_channel.id, self.interval_days, self.hour, self.minute, self.next_date))
             else:
-                cur.execute('UPDATE progress SET interval_days = %s, hour = %s, minute = %s, date = %s WHERE channel_id = %s', (self.interval_days, self.hour, self.minute, self.next_date, self.chosen_channel.id))
+                cur.execute(
+                    'UPDATE progress SET interval_days = %s, hour = %s, minute = %s, date = %s WHERE channel_id = %s',
+                    (self.interval_days, self.hour, self.minute, self.next_date, self.chosen_channel.id))
             self.database_connector.commit()
         self.command.delete_interval(hour=self.prev_hour, minute=self.prev_minute)
         self.command.add_interval(hour=self.hour, minute=self.minute)
@@ -249,10 +297,26 @@ class Runner(base.Runner):
 
     async def delete(self, interaction: discord.Interaction):
         with self.database_connector.cursor() as cur:
-            cur.execute('DELETE FROM progress WHERE channel_id = %s', (self.chosen_channel.id, ))
+            cur.execute('DELETE FROM progress WHERE channel_id = %s', (self.chosen_channel.id,))
             self.database_connector.commit()
         self.progress_window.set_pattern(pattern_id=ProgressWindow.WindowID.DELETED)
         await self.progress_window.response_edit(interaction=interaction)
+
+    async def member(self, interaction: discord.Interaction):
+        self.progress_window.set_pattern(pattern_id=ProgressWindow.WindowID.MEMBERS)
+        await self.progress_window.response_edit(interaction=interaction)
+
+    async def setting(self, interaction: discord.Interaction):
+        self.progress_window.set_pattern(pattern_id=ProgressWindow.WindowID.SETTING)
+        await self.progress_window.response_edit(interaction=interaction)
+
+    async def back_menu(self, interaction: discord.Interaction):
+        self.progress_window.set_pattern(pattern_id=ProgressWindow.WindowID.MENU)
+        await self.progress_window.response_edit(interaction=interaction)
+
+    async def select_member(self, values: List[Union[discord.Member, discord.User]]):
+        with self.database_connector.cursor() as cur:
+            cur.execute('SELECT total, streak, escape, ban')
 
 
 class Progress(base.Command):
@@ -284,7 +348,8 @@ class Progress(base.Command):
         print(self.printer.time)
 
     def add_interval(self, hour: int, minute: int):
-        self.printer.change_interval(time=self.printer.time + [datetime.time(hour=hour, minute=minute, tzinfo=ZONE_TOKYO)])
+        self.printer.change_interval(
+            time=self.printer.time + [datetime.time(hour=hour, minute=minute, tzinfo=ZONE_TOKYO)])
         print(self.printer.time)
         self.printer.restart()
         print(self.printer.time)
