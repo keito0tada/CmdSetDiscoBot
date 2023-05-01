@@ -452,6 +452,7 @@ class Progress(base.Command):
                                     (0, results[0][0] + 1, MAX_HP, results[0][2] + 1, member.id)
                                 )
                                 kick_members.append(member)
+                                escape_members.remove(member)
                             self.database_connector.commit()
                         else:
                             raise ValueError
