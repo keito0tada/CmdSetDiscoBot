@@ -254,10 +254,6 @@ class Runner(base.Runner):
         await self.progress_window.response_edit(interaction=interaction)
 
     async def add(self, interaction: discord.Interaction):
-        print(self.interval_days)
-        print(self.hour)
-        print(self.minute)
-        print(self.next_date)
         if self.interval_days is None or self.hour is None or self.minute is None or self.next_date is None:
             self.progress_window.set_pattern(pattern_id=ProgressWindow.WindowID.ADD)
             self.progress_window.embed_dict['color'] = 0x8b0000
@@ -275,9 +271,7 @@ class Runner(base.Runner):
                         'UPDATE progress SET interval_days = %s, hour = %s, minute = %s, date = %s WHERE channel_id = %s',
                         (self.interval_days, self.hour, self.minute, self.next_date, self.chosen_channel.id))
                 self.database_connector.commit()
-            self.command.add_interval(hour=self.hour, minute=self.minute)
-            print(self.command.printer.is_running())
-            print(self.command.printer.next_iteration)
+            self.command.change_printer_interval()
             self.progress_window.set_pattern(pattern_id=ProgressWindow.WindowID.ADDED)
             self.progress_window.embed_dict['fields'] = [
                 {'name': '送信する間隔', 'value': '{}日ごと'.format(self.interval_days)},
@@ -299,8 +293,7 @@ class Runner(base.Runner):
                     'UPDATE progress SET interval_days = %s, hour = %s, minute = %s, date = %s WHERE channel_id = %s',
                     (self.interval_days, self.hour, self.minute, self.next_date, self.chosen_channel.id))
             self.database_connector.commit()
-        self.command.delete_interval(hour=self.prev_hour, minute=self.prev_minute)
-        self.command.add_interval(hour=self.hour, minute=self.minute)
+        self.command.change_printer_interval()
         self.progress_window.set_pattern(pattern_id=ProgressWindow.WindowID.EDITED)
         self.progress_window.embed_dict['fields'] = [
             {'name': '送信する間隔', 'value': '{}日ごと'.format(self.interval_days)},
@@ -393,29 +386,26 @@ class Progress(base.Command):
             )
             self.database_connector.commit()
 
-    def delete_interval(self, hour: int, minute: int):
-        times = []
-        for time in self.printer.time:
-            if time.hour is not hour or time.minute is not minute:
-                times.append(time)
-        self.printer.change_interval(time=times)
-        print(self.printer.time)
-
-    def add_interval(self, hour: int, minute: int):
-        self.printer.change_interval(
-            time=self.printer.time + [datetime.time(hour=hour, minute=minute, tzinfo=ZONE_TOKYO)])
-        print(self.printer.time)
-        self.printer.restart()
+    def change_printer_interval(self):
+        print('changed printer interval.')
+        with self.database_connector.cursor() as cur:
+            cur.execute('SELECT hour, minute FROM progress')
+            results = cur.fetchall()
+        new_time = [datetime.time(hour=hour, minute=minute, tzinfo=ZONE_TOKYO) for hour, minute in results]
+        self.printer.change_interval(time=new_time)
         print(self.printer.time)
 
     @commands.command()
     async def progress(self, ctx: commands.Context):
+        print('progress was called.')
+        print('printer next iteration is {}'.format(self.printer.next_iteration))
         print(self.printer.time)
         self.runners.append(Runner(command=self, channel=ctx.channel, database_connector=self.database_connector))
         await self.runners[len(self.runners) - 1].run()
 
     @tasks.loop(time=TIME)
     async def printer(self):
+        print('printer was called.')
         with self.database_connector.cursor(cursor_factory=psycopg2.extras.DictCursor) as cur:
             cur.execute('SELECT channel_id, interval_days, hour, minute, date FROM progress')
             results = cur.fetchall()
@@ -426,12 +416,6 @@ class Progress(base.Command):
         updates: List[tuple] = []
         for channel_id, intervals_days, hour, minute, date in results:
             called_time = now.replace(hour=hour, minute=minute, second=0, microsecond=0, tzinfo=ZONE_TOKYO)
-            print('////////////////////////')
-            print(intervals_days)
-            print(hour)
-            print(minute)
-            print(date)
-            print(called_time)
             if today >= date and now >= called_time:
                 channel = self.bot.get_channel(channel_id)
                 escape_members = channel.members
