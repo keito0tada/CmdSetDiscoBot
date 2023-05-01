@@ -475,7 +475,7 @@ class Progress(base.Command):
                         else:
                             raise ValueError
                     for member in sent_members:
-                        cur.execute('SELECT total, streak, hp FROM progres_members WHERE user_id = %s', (member.id, ))
+                        cur.execute('SELECT total, streak, hp FROM progress_members WHERE user_id = %s', (member.id, ))
                         results = cur.fetchall()
                         if len(results) == 0:
                             cur.execute(
