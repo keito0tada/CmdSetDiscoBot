@@ -389,6 +389,8 @@ class Progress(base.Command):
         self.printer.change_interval(time=new_time)
         print('printer next iteration is {}'.format(self.printer.next_iteration))
         print(self.printer.time)
+        self.printer.restart()
+        print('printer next iteration is {}'.format(self.printer.next_iteration))
 
     @commands.command()
     async def progress(self, ctx: commands.Context):
