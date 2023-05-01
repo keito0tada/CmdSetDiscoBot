@@ -189,7 +189,7 @@ class ProgressWindow(base.Window):
              NextDaySelect(runner=runner), EditButton(runner=runner), BackButton(runner=runner),
              DeleteButton(runner=runner)],
             [BackButton(runner=runner)], [BackButton(runner=runner)], [BackButton(runner=runner)],
-            [MembersButton(runner=runner), SettingButton(runner=runner)], [BackButton(runner=runner)]
+            [MembersButton(runner=runner), SettingButton(runner=runner)], [BackMenuButton(runner=runner)]
         ])
 
 
