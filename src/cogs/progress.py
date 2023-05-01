@@ -456,16 +456,15 @@ class Progress(base.Command):
                                     (member.id, ))
                         result = cur.fetchone()
                         print(result)
-                        self.database_connector.commit()
                         if result[1] - 1 > 0:
                             cur.execute(
                                 'UPDATE progress_members SET streak = %s, escape = %s, hp = %s WHERE user_id = %s',
-                                (0, result[0] + 1, result[1] - 1)
+                                (0, result[0] + 1, result[1] - 1, member.id)
                             )
                         else:
                             cur.execute(
                                 'UPDATE progress_members SET streak = %s. escape = %s, hp = %s, kick = %s WHERE user_id = %s',
-                                (0, result[0] + 1, MAX_HP, result[2] + 1)
+                                (0, result[0] + 1, MAX_HP, result[2] + 1, member.id)
                             )
                             kick_members.append(member)
                         self.database_connector.commit()
@@ -473,7 +472,7 @@ class Progress(base.Command):
                         cur.execute('SELECT total, streak, hp FROM progres_members WHERE user_id = %s', (member.id, ))
                         result = cur.fetchone()
                         cur.execute('UPDATE progress_members SET total = %s, streak = %s, hp = %s WHERE user_id = %s',
-                                    (result[0] + 1, result[1] + 1, min(result[1] + 1, MAX_HP)))
+                                    (result[0] + 1, result[1] + 1, min(result[1] + 1, MAX_HP), member.id))
                         self.database_connector.commit()
                 invite = await channel.create_invite(reason='進捗報告を怠ったためにKickしたため。')
                 for member in kick_members:
