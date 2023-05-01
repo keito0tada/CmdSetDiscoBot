@@ -136,7 +136,7 @@ class ProgressWindow(base.Window):
             [IntervalDaysSelect(runner=runner), HourSelect(runner=runner), MinuteSelect(runner=runner),
              NextDaySelect(runner=runner), AddButton(runner=runner), BackButton(runner=runner)],
             [IntervalDaysSelect(runner=runner), HourSelect(runner=runner), MinuteSelect(runner=runner),
-             NextDaySelect(runner=runner), AddButton(runner=runner), BackButton(runner=runner),
+             NextDaySelect(runner=runner), EditButton(runner=runner), BackButton(runner=runner),
              DeleteButton(runner=runner)],
             [BackButton(runner=runner)], [BackButton(runner=runner)]
         ])
@@ -243,11 +243,6 @@ class Runner(base.Runner):
             cur.execute('DELETE FROM progress WHERE channel_id = %s', (self.chosen_channel.id, ))
             self.database_connector.commit()
         self.progress_window.set_pattern(4)
-        self.progress_window.embed_dict['fields'] = [
-            {'name': '送信する間隔', 'value': '{}日ごと'.format(self.interval_days)},
-            {'name': '送信する時刻', 'value': '{0}時{1}分'.format(self.hour, self.minute)},
-            {'name': '次に送信される日付', 'value': str(self.next_date)}
-        ]
         await self.progress_window.response_edit(interaction=interaction)
 
 
@@ -281,6 +276,8 @@ class Progress(base.Command):
 
     def add_interval(self, hour: int, minute: int):
         self.printer.change_interval(time=self.printer.time + [datetime.time(hour=hour, minute=minute, tzinfo=ZONE_TOKYO)])
+        print(self.printer.time)
+        self.printer.restart()
         print(self.printer.time)
 
     @commands.command()
