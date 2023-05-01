@@ -394,7 +394,7 @@ class Progress(base.Command):
                     for member in members:
                         mentions = '{0} {1}'.format(mentions, member.mention)
                     await channel.send(embed=discord.Embed(
-                        title='今日の進捗はどうですか？', description='aaaa'
+                        title='今日の進捗はどうですか？', description=mentions
                     ))
                 updates.append((date + datetime.timedelta(days=intervals_days), channel_id))
 
