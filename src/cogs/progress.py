@@ -190,7 +190,7 @@ class ProgressWindow(base.Window):
             {'title': '追加 完了'},
             {'title': '変更 完了'},
             {'title': '削除 完了'},
-            {'title': '進捗報告 監視', 'description': '設定したチャンネルに進捗報告があるか監視します。指定した期間内に報告がない場合はメンションが飛びます。また一定回数報告がない場合はこのサーバーからBanされます。'},
+            {'title': '進捗報告 監視', 'description': '設定したチャンネルに進捗報告があるか監視します。指定した期間内に報告がない場合はメンションが飛びます。また一定回数報告がない場合はこのサーバーからKickされます。'},
             {'title': '進捗報告　状況', 'description': 'メンバーの進捗報告状況が確認できます。'},
             {'title': 'member name'}
         ], view_patterns=[
@@ -342,14 +342,14 @@ class Runner(base.Runner):
         streak = 0
         escape = 0
         hp = MAX_HP
-        ban = 0
+        kick = 0
         if len(results) == 0:
             with self.database_connector.cursor() as cur:
-                cur.execute('INSERT INTO progress_members (user_id, total, streak, escape, hp, ban) VALUES (%s, %s, %s, %s, %s, %s)',
-                            (values[0].id, total, streak, escape, hp, ban))
+                cur.execute('INSERT INTO progress_members (user_id, total, streak, escape, hp, kick) VALUES (%s, %s, %s, %s, %s, %s)',
+                            (values[0].id, total, streak, escape, hp, kick))
                 self.database_connector.commit()
         elif len(results) == 1:
-            total, streak, escape, hp, ban = results[0]
+            total, streak, escape, hp, kick = results[0]
         self.progress_window.set_pattern(pattern_id=ProgressWindow.WindowID.MEMBER)
         self.progress_window.embed_dict['title'] = '*{}*'.format(values[0].name)
         self.progress_window.embed_dict['thumbnail'] = {'url': values[0].display_avatar.url}
@@ -357,8 +357,8 @@ class Runner(base.Runner):
             {'name': '報告回数', 'value': '{}回'.format(total)},
             {'name': '現在の連続回数', 'value': '{}回'.format(streak)},
             {'name': '報告忘れ回数', 'value': '{}回'.format(escape)},
-            {'name': 'Banされるまでの残り回数', 'value': '{}回'.format(hp)},
-            {'name': 'Banされた回数', 'value': '{}回'.format(ban)}
+            {'name': 'Kickされるまでの残り回数', 'value': '{}回'.format(hp)},
+            {'name': 'Kickされた回数', 'value': '{}回'.format(kick)}
         ]
         await self.progress_window.response_edit(interaction=interaction)
 
@@ -389,7 +389,7 @@ class Progress(base.Command):
 
         with self.database_connector.cursor() as cur:
             cur.execute(
-                'CREATE TABLE IF NOT EXISTS progress_members (user_id BIGINT, total INTEGER, streak INTEGER, escape INTEGER, hp INTEGER, ban INTEGER)'
+                'CREATE TABLE IF NOT EXISTS progress_members (user_id BIGINT, total INTEGER, streak INTEGER, escape INTEGER, hp INTEGER, kick INTEGER)'
             )
             self.database_connector.commit()
 
@@ -434,19 +434,47 @@ class Progress(base.Command):
             print(called_time)
             if today >= date and now >= called_time:
                 channel = self.bot.get_channel(channel_id)
-                members = channel.members
+                escape_members = channel.members
+                sent_members = []
+                kick_members = []
                 start_time = now - datetime.timedelta(days=intervals_days)
                 async for message in channel.history(after=start_time):
-                    if message.author in members:
-                        members.remove(message.author)
-                if len(members) > 0:
+                    if message.author in escape_members:
+                        escape_members.remove(message.author)
+                        sent_members.append(message.author)
+                if len(escape_members) > 0:
                     mentions = ''
-                    for member in members:
+                    for member in escape_members:
                         mentions = '{0} {1}'.format(mentions, member.mention)
                     await channel.send(embed=discord.Embed(
                         title='進捗どうですか？', description=mentions
                     ))
                 updates.append((date + datetime.timedelta(days=intervals_days), channel_id))
+                with self.database_connector.cursor() as cur:
+                    for member in escape_members:
+                        cur.execute('SELECT escape, hp, kick FROM progress_members WHERE user_id = %s',
+                                    (member.id, ))
+                        result = cur.fetchone()
+                        if result[1] - 1 > 0:
+                            cur.execute(
+                                'UPDATE progress_members SET streak = %s, escape = %s, hp = %s WHERE user_id = %s',
+                                (0, result[0] + 1, result[1] - 1)
+                            )
+                        else:
+                            cur.execute(
+                                'UPDATE progress_members SET streak = %s. escape = %s, hp = %s, kick = %s WHERE user_id = %s',
+                                (0, result[0] + 1, MAX_HP, result[2] + 1)
+                            )
+                            kick_members.append(member)
+                        self.database_connector.commit()
+                    for member in sent_members:
+                        cur.execute('SELECT total, streak, hp FROM progres_members WHERE user_id = %s', (member.id, ))
+                        result = cur.fetchone()
+                        cur.execute('UPDATE progress_members SET total = %s, streak = %s, hp = %s WHERE user_id = %s',
+                                    (result[0] + 1, result[1] + 1, min(result[1] + 1, MAX_HP)))
+                        self.database_connector.commit()
+                for member in kick_members:
+                    member.kick(reason='進捗報告を怠ったため。')
 
         with self.database_connector.cursor() as cur:
             for update in updates:
