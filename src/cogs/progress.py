@@ -447,7 +447,7 @@ class Progress(base.Command):
                     for member in escape_members:
                         mentions = '{0} {1}'.format(mentions, member.mention)
                     await channel.send(embed=discord.Embed(
-                        title='進捗どうですか？', description=mentions
+                        title='進捗どうですか？', description='aaaa'
                     ))
                 updates.append((date + datetime.timedelta(days=intervals_days), channel_id))
                 with self.database_connector.cursor() as cur:
