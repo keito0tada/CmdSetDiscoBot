@@ -477,27 +477,38 @@ class Progress(base.Command):
                 if len(kick_members) > 0:
                     invite = await channel.create_invite(reason='進捗報告を怠ったためにKickしたため。')
                     member_names = ''
+                    failed = []
                     for member in kick_members:
                         member_names = '{0} {1}'.format(member_names, member.name)
                         await member.send(content=invite.url)
-                        await member.kick(reason='進捗報告を怠ったため。')
-                    embed = discord.Embed(title='Good Bye!!', description=member_names)
+                        try:
+                            await member.kick(reason='進捗報告を怠ったため。')
+                        except discord.Forbidden:
+                            failed.append(member)
+                    embed = discord.Embed(title='Good Bye!!', description=member_names, colour=discord.Colour.red())
                     embed.set_thumbnail(url='https://em-content.zobj.net/thumbs/240/twitter/322/rolling-on-the-floor-laughing_1f923.png')
+                    if len(failed) > 0:
+                        failed_names = failed[0].name
+                        for i in range(1, len(failed)):
+                            failed_names = '{0}, {1}'.format(failed_names, failed[i])
+                        embed.add_field(name='権限不足でKickできなかったメンバー', value=failed_names)
                     await channel.send(embed=embed)
                 if len(escape_members) > 0:
                     mentions = ''
                     for member in escape_members:
                         mentions = '{0} {1}'.format(mentions, member.name)
-                    embed = discord.Embed(title='進捗どうですか？', description=mentions)
+                    embed = discord.Embed(title='進捗どうですか？', description=mentions, colour=discord.Color.orange())
+                    embed.set_thumbnail(url='https://em-content.zobj.net/thumbs/240/twitter/322/thinking-face_1f914.png')
                     if max_streak[0] > 0:
-                        embed.add_field(name='最大連続報告: {}回'.format(max_streak[0]), value=max_streak[1])
+                        embed.add_field(name='最大連続報告: {}回'.format(max_streak[0]), value=max_streak[1], inline=False)
                     for hp in range(MAX_HP):
                         if hps[hp] is not None:
                             embed.add_field(name='残り{}回'.format(hp), value=hps[hp])
                 else:
-                    embed = discord.Embed(title='全員進捗報告済み!!')
+                    embed = discord.Embed(title='全員進捗報告済み!!', colour=discord.Color.blue())
+                    embed.set_thumbnail(url='https://em-content.zobj.net/thumbs/240/twitter/322/smiling-face-with-halo_1f607.png')
                     if max_streak[0] > 0:
-                        embed.add_field(name='最大連続報告: {}回'.format(max_streak[0]), value=max_streak[1])
+                        embed.add_field(name='最大連続報告: {}回'.format(max_streak[0]), value=max_streak[1], inline=False)
                 embed.set_footer(text='次回は{}です。'.format((now + datetime.timedelta(days=intervals_days)).strftime('%Y年%m月%d日%H時%M分')))
                 await channel.send(embed=embed)
 
