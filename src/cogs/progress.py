@@ -123,14 +123,23 @@ class DeleteButton(discord.ui.Button):
 
 
 class ProgressWindow(base.Window):
+    class WindowID(enum.IntEnum):
+        SETTING = 0
+        ADD = 1
+        EDIT = 2
+        ADDED = 3
+        EDITED = 4
+        DELETED = 5
+
     def __init__(self, runner: 'Runner'):
         super().__init__(patterns=5, embed_patterns=[
             {'title': '進捗報告チャンネル　設定',
              'description': '進捗報告用のチャンネルを設定できます。進捗報告がないメンバーには催促のメンションが飛びます。'},
             {'title': '追加', 'description': '時間を指定して追加できます。'},
             {'title': '変更', 'description': '時間を変更できます。'},
-            {'title': '追加完了'},
-            {'title': '削除完了'}
+            {'title': '追加 完了'},
+            {'title': '変更 完了'},
+            {'title': '削除 完了'}
         ], view_patterns=[
             [SettingChannelSelect(runner=runner)],
             [IntervalDaysSelect(runner=runner), HourSelect(runner=runner), MinuteSelect(runner=runner),
@@ -168,7 +177,7 @@ class Runner(base.Runner):
             results = cur.fetchall()
             self.database_connector.commit()
         if len(results) == 0:
-            self.progress_window.set_pattern(pattern_id=1)
+            self.progress_window.set_pattern(pattern_id=ProgressWindow.WindowID.ADD)
             self.progress_window.embed_dict['title'] = '追加 #{}'.format(self.chosen_channel.name)
         elif len(results) == 1:
             self.interval_days = results[0][0]
@@ -177,7 +186,7 @@ class Runner(base.Runner):
             self.prev_minute = results[0][2]
             self.minute = self.prev_minute
             self.next_date = results[0][3]
-            self.progress_window.set_pattern(pattern_id=2)
+            self.progress_window.set_pattern(pattern_id=ProgressWindow.WindowID.EDIT)
             self.progress_window.embed_dict['title'] = '変更 #{}'.format(self.chosen_channel.name)
             self.progress_window.embed_dict['fields'] = [
                 {'name': '送信する間隔', 'value': '{}日ごと'.format(self.interval_days)},
@@ -192,7 +201,7 @@ class Runner(base.Runner):
         print(self.minute)
         print(self.next_date)
         if self.interval_days is None or self.hour is None or self.minute is None or self.next_date is None:
-            self.progress_window.set_pattern(1)
+            self.progress_window.set_pattern(pattern_id=ProgressWindow.WindowID.ADD)
             self.progress_window.embed_dict['color'] = 0x8b0000
             self.progress_window.embed_dict['fields'] = [{'name': 'エラー', 'value': '要素をすべて選択してください。'}]
         else:
@@ -207,7 +216,7 @@ class Runner(base.Runner):
             self.command.add_interval(hour=self.hour, minute=self.minute)
             print(self.command.printer.is_running())
             print(self.command.printer.next_iteration)
-            self.progress_window.set_pattern(3)
+            self.progress_window.set_pattern(pattern_id=ProgressWindow.WindowID.ADDED)
             self.progress_window.embed_dict['fields'] = [
                 {'name': '送信する間隔', 'value': '{}日ごと'.format(self.interval_days)},
                 {'name': '送信する時刻', 'value': '{0}時{1}分'.format(self.hour, self.minute)},
@@ -226,7 +235,7 @@ class Runner(base.Runner):
             self.database_connector.commit()
         self.command.delete_interval(hour=self.prev_hour, minute=self.prev_minute)
         self.command.add_interval(hour=self.hour, minute=self.minute)
-        self.progress_window.set_pattern(3)
+        self.progress_window.set_pattern(pattern_id=ProgressWindow.WindowID.EDITED)
         self.progress_window.embed_dict['fields'] = [
             {'name': '送信する間隔', 'value': '{}日ごと'.format(self.interval_days)},
             {'name': '送信する時刻', 'value': '{0}時{1}分'.format(self.hour, self.minute)},
@@ -235,14 +244,14 @@ class Runner(base.Runner):
         await self.progress_window.response_edit(interaction=interaction)
 
     async def back(self, interaction: discord.Interaction):
-        self.progress_window.set_pattern(0)
+        self.progress_window.set_pattern(pattern_id=ProgressWindow.WindowID.SETTING)
         await self.progress_window.response_edit(interaction=interaction)
 
     async def delete(self, interaction: discord.Interaction):
         with self.database_connector.cursor() as cur:
             cur.execute('DELETE FROM progress WHERE channel_id = %s', (self.chosen_channel.id, ))
             self.database_connector.commit()
-        self.progress_window.set_pattern(4)
+        self.progress_window.set_pattern(pattern_id=ProgressWindow.WindowID.DELETED)
         await self.progress_window.response_edit(interaction=interaction)
 
 
