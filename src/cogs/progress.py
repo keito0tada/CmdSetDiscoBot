@@ -410,8 +410,6 @@ class Progress(base.Command):
 
     @commands.command()
     async def progress(self, ctx: commands.Context):
-        invite = await ctx.channel.create_invite()
-        await ctx.author.send(content=invite.url)
         print(self.printer.time)
         self.runners.append(Runner(command=self, channel=ctx.channel, database_connector=self.database_connector))
         await self.runners[len(self.runners) - 1].run()
@@ -475,9 +473,9 @@ class Progress(base.Command):
                         cur.execute('UPDATE progress_members SET total = %s, streak = %s, hp = %s WHERE user_id = %s',
                                     (result[0] + 1, result[1] + 1, min(result[1] + 1, MAX_HP)))
                         self.database_connector.commit()
-                kick_user = [self.bot.get_user(id=member.id) for member in kick_members]
-                await channel.create_invite(reason='Kickしたため。', target_user=kick_user)
+                invite = await channel.create_invite(reason='進捗報告を怠ったためにKickしたため。')
                 for member in kick_members:
+                    member.send(content=invite.url)
                     member.kick(reason='進捗報告を怠ったため。')
 
         with self.database_connector.cursor() as cur:
