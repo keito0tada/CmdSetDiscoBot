@@ -467,7 +467,7 @@ class Progress(base.Command):
                                 )
                             else:
                                 cur.execute(
-                                    'UPDATE progress_members SET streak = %s. escape = %s, hp = %s, kick = %s WHERE user_id = %s',
+                                    'UPDATE progress_members SET streak = %s, escape = %s, hp = %s, kick = %s WHERE user_id = %s',
                                     (0, results[0][0] + 1, MAX_HP, results[0][2] + 1, member.id)
                                 )
                                 kick_members.append(member)
@@ -484,7 +484,7 @@ class Progress(base.Command):
                             self.database_connector.commit()
                         elif len(results) == 1:
                             cur.execute('UPDATE progress_members SET total = %s, streak = %s, hp = %s WHERE user_id = %s',
-                                        (results[0][0] + 1, results[0][1] + 1, min(results[0][1] + 1, MAX_HP), member.id))
+                                        (results[0][0] + 1, results[0][1] + 1, min(results[0][2] + 1, MAX_HP), member.id))
                             self.database_connector.commit()
                         else:
                             raise ValueError
