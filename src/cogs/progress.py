@@ -486,15 +486,17 @@ class Progress(base.Command):
                 if len(escape_members) > 0:
                     mentions = ''
                     for member in escape_members:
-                        mentions = '{0} {1}'.format(mentions, member.mention)
+                        mentions = '{0} {1}'.format(mentions, member.name)
                     embed = discord.Embed(title='進捗どうですか？', description=mentions)
-                    embed.add_field(name='最大連続報告: {}回'.format(max_streak[0]), value=max_streak[1])
+                    if max_streak[0] > 0:
+                        embed.add_field(name='最大連続報告: {}回'.format(max_streak[0]), value=max_streak[1])
                     for hp in range(MAX_HP):
                         if hps[hp] is not None:
                             embed.add_field(name='残り{}回'.format(hp), value=hps[hp])
                 else:
                     embed = discord.Embed(title='全員進捗報告済み!!')
-                    embed.add_field(name='最大連続報告: {}回'.format(max_streak[0]), value=max_streak[1])
+                    if max_streak[0] > 0:
+                        embed.add_field(name='最大連続報告: {}回'.format(max_streak[0]), value=max_streak[1])
                 embed.set_footer(text='次回は{}です。'.format((now + datetime.timedelta(days=intervals_days)).strftime('%Y年%m月%d日%H時%M分')))
                 await channel.send(embed=embed)
 
