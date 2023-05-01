@@ -15,6 +15,7 @@ import os
 DATABASE_URL = os.getenv('DATABASE_URL')
 ZONE_TOKYO = zoneinfo.ZoneInfo('Asia/Tokyo')
 TIME = datetime.time(hour=4, minute=12, tzinfo=ZONE_TOKYO)
+MAX_HP = 5
 
 
 class SettingChannelSelect(discord.ui.ChannelSelect):
@@ -150,6 +151,15 @@ class BackMenuButton(discord.ui.Button):
         await self.runner.back_menu(interaction=interaction)
 
 
+class BackMembersButton(discord.ui.Button):
+    def __init__(self, runner: 'Runner'):
+        super().__init__(label='戻る', style=discord.ButtonStyle.secondary)
+        self.runner = runner
+
+    async def callback(self, interaction: discord.Interaction):
+        await self.runner.back_members(interaction=interaction)
+
+
 class MemberSelect(discord.ui.UserSelect):
     def __init__(self, runner: 'Runner'):
         super().__init__(placeholder='メンバー')
@@ -169,9 +179,10 @@ class ProgressWindow(base.Window):
         DELETED = 5
         MENU = 6
         MEMBERS = 7
+        MEMBER = 8
 
     def __init__(self, runner: 'Runner'):
-        super().__init__(patterns=8, embed_patterns=[
+        super().__init__(patterns=9, embed_patterns=[
             {'title': '進捗報告チャンネル　設定',
              'description': '進捗報告用のチャンネルを設定できます。進捗報告がないメンバーには催促のメンションが飛びます。'},
             {'title': '追加', 'description': '時間を指定して追加できます。'},
@@ -180,7 +191,8 @@ class ProgressWindow(base.Window):
             {'title': '変更 完了'},
             {'title': '削除 完了'},
             {'title': '進捗報告 監視', 'description': '設定したチャンネルに進捗報告があるか監視します。指定した期間内に報告がない場合はメンションが飛びます。また一定回数報告がない場合はこのサーバーからBanされます。'},
-            {'title': '進捗報告　状況', 'description': 'メンバーの進捗報告状況が確認できます。'}
+            {'title': '進捗報告　状況', 'description': 'メンバーの進捗報告状況が確認できます。'},
+            {'title': 'member name'}
         ], view_patterns=[
             [SettingChannelSelect(runner=runner), BackMenuButton(runner=runner)],
             [IntervalDaysSelect(runner=runner), HourSelect(runner=runner), MinuteSelect(runner=runner),
@@ -318,9 +330,37 @@ class Runner(base.Runner):
         self.progress_window.set_pattern(pattern_id=ProgressWindow.WindowID.MENU)
         await self.progress_window.response_edit(interaction=interaction)
 
-    async def select_member(self, values: List[Union[discord.Member, discord.User]]):
+    async def select_member(self, values: List[Union[discord.Member, discord.User]], interaction: discord.Interaction):
+        assert len(values) == 1
         with self.database_connector.cursor() as cur:
-            cur.execute('SELECT total, streak, escape, ban')
+            cur.execute('SELECT total, streak, escape, hp, ban FROM progress_member WHERE user_id = %s', (values[0].id,))
+            results = cur.fetchall()
+            self.database_connector.commit()
+        total = 0
+        streak = 0
+        escape = 0
+        hp = MAX_HP
+        ban = 0
+        if len(results) == 0:
+            with self.database_connector.cursor() as cur:
+                cur.execute('INSERT INTO progress_meber SET user_id, total = %s, streak = %s, escape = %s, hp = %s, ban = %s',
+                            (values[0].id, total, streak, escape, hp, ban))
+                self.database_connector.commit()
+        elif len(results) == 1:
+            total, streak, escape, hp, ban = results[0]
+        self.progress_window.set_pattern(pattern_id=ProgressWindow.WindowID.MEMBER)
+        self.progress_window.embed_dict['fields'] = [
+            {'name': '報告回数', 'value': '{}回'.format(total)},
+            {'name': '現在の連続回数', 'value': '{}回'.format(streak)},
+            {'name': '報告忘れ回数', 'value': '{}回'.format(escape)},
+            {'name': 'Banされるまでの残り回数', 'value': '{}回'.format(hp)},
+            {'name': 'Banされた回数', 'value': '{}回'.format(ban)}
+        ]
+        await self.progress_window.response_edit(interaction=interaction)
+
+    async def back_members(self, interaction: discord.Interaction):
+        self.progress_window.set_pattern(pattern_id=ProgressWindow.WindowID.MEMBERS)
+        await self.progress_window.response_edit(interaction=interaction)
 
 
 class Progress(base.Command):
@@ -342,6 +382,12 @@ class Progress(base.Command):
         for hour, minute in results:
             new_times.append(datetime.time(hour=hour, minute=minute, tzinfo=ZONE_TOKYO))
         self.printer.change_interval(time=new_times)
+
+        with self.database_connector.cursor() as cur:
+            cur.execute(
+                'CREATE TABLE IF NOT EXISTS progress_members (user_id BIGINT, total INTEGER, streak INTEGER, escape INTEGER, hp INTEGER, ban INTEGER)'
+            )
+            self.database_connector.commit()
 
     def delete_interval(self, hour: int, minute: int):
         times = []
@@ -394,7 +440,7 @@ class Progress(base.Command):
                     for member in members:
                         mentions = '{0} {1}'.format(mentions, member.mention)
                     await channel.send(embed=discord.Embed(
-                        title='今日の進捗はどうですか？', description=mentions
+                        title='進捗どうですか？', description=mentions
                     ))
                 updates.append((date + datetime.timedelta(days=intervals_days), channel_id))
 
