@@ -124,7 +124,7 @@ class DeleteButton(discord.ui.Button):
 
 class ProgressWindow(base.Window):
     def __init__(self, runner: 'Runner'):
-        super().__init__(patterns=4, embed_patterns=[
+        super().__init__(patterns=5, embed_patterns=[
             {'title': '進捗報告チャンネル　設定',
              'description': '進捗報告用のチャンネルを設定できます。進捗報告がないメンバーには催促のメンションが飛びます。'},
             {'title': '追加', 'description': '時間を指定して追加できます。'},
