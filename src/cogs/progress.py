@@ -166,7 +166,7 @@ class MemberSelect(discord.ui.UserSelect):
         self.runner = runner
 
     async def callback(self, interaction: discord.Interaction):
-        pass
+        await self.runner.select_member(values=self.values, interaction=interaction)
 
 
 class ProgressWindow(base.Window):
