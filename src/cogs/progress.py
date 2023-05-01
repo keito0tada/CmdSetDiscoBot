@@ -334,7 +334,7 @@ class Runner(base.Runner):
     async def select_member(self, values: List[Union[discord.Member, discord.User]], interaction: discord.Interaction):
         assert len(values) == 1
         with self.database_connector.cursor() as cur:
-            cur.execute('SELECT total, streak, escape, hp, ban FROM progress_member WHERE user_id = %s', (values[0].id,))
+            cur.execute('SELECT total, streak, escape, hp, ban FROM progress_members WHERE user_id = %s', (values[0].id,))
             results = cur.fetchall()
             self.database_connector.commit()
         total = 0
@@ -344,7 +344,7 @@ class Runner(base.Runner):
         ban = 0
         if len(results) == 0:
             with self.database_connector.cursor() as cur:
-                cur.execute('INSERT INTO progress_meber SET user_id, total = %s, streak = %s, escape = %s, hp = %s, ban = %s',
+                cur.execute('INSERT INTO progress_mebers SET user_id, total = %s, streak = %s, escape = %s, hp = %s, ban = %s',
                             (values[0].id, total, streak, escape, hp, ban))
                 self.database_connector.commit()
         elif len(results) == 1:
