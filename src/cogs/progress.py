@@ -454,26 +454,40 @@ class Progress(base.Command):
                     for member in escape_members:
                         cur.execute('SELECT escape, hp, kick FROM progress_members WHERE user_id = %s',
                                     (member.id, ))
-                        result = cur.fetchone()
-                        print(result)
-                        if result[1] - 1 > 0:
-                            cur.execute(
-                                'UPDATE progress_members SET streak = %s, escape = %s, hp = %s WHERE user_id = %s',
-                                (0, result[0] + 1, result[1] - 1, member.id)
-                            )
+                        results = cur.fetchall()
+                        if len(results) == 0:
+                            cur.execute('INSERT INTO progress_members (user_id, total, streak, escape, hp, kick) VALUES (%s, %s, %s, %s, %s, %s)',
+                                        (member.id, 0, 0, 0, MAX_HP, 0))
+                            self.database_connector.commit()
+                        elif len(results) == 1:
+                            if results[0][1] - 1 > 0:
+                                cur.execute(
+                                    'UPDATE progress_members SET streak = %s, escape = %s, hp = %s WHERE user_id = %s',
+                                    (0, results[0][0] + 1, results[0][1] - 1, member.id)
+                                )
+                            else:
+                                cur.execute(
+                                    'UPDATE progress_members SET streak = %s. escape = %s, hp = %s, kick = %s WHERE user_id = %s',
+                                    (0, results[0][0] + 1, MAX_HP, results[0][2] + 1, member.id)
+                                )
+                                kick_members.append(member)
+                            self.database_connector.commit()
                         else:
-                            cur.execute(
-                                'UPDATE progress_members SET streak = %s. escape = %s, hp = %s, kick = %s WHERE user_id = %s',
-                                (0, result[0] + 1, MAX_HP, result[2] + 1, member.id)
-                            )
-                            kick_members.append(member)
-                        self.database_connector.commit()
+                            raise ValueError
                     for member in sent_members:
                         cur.execute('SELECT total, streak, hp FROM progres_members WHERE user_id = %s', (member.id, ))
-                        result = cur.fetchone()
-                        cur.execute('UPDATE progress_members SET total = %s, streak = %s, hp = %s WHERE user_id = %s',
-                                    (result[0] + 1, result[1] + 1, min(result[1] + 1, MAX_HP), member.id))
-                        self.database_connector.commit()
+                        results = cur.fetchall()
+                        if len(results) == 0:
+                            cur.execute(
+                                'INSERT INTO progress_members (user_id, total, streak, escape, hp, kick) VALUES (%s, %s, %s, %s, %s, %s)',
+                                (member.id, 0, 0, 0, MAX_HP, 0))
+                            self.database_connector.commit()
+                        elif len(results) == 1:
+                            cur.execute('UPDATE progress_members SET total = %s, streak = %s, hp = %s WHERE user_id = %s',
+                                        (results[0][0] + 1, results[0][1] + 1, min(results[0][1] + 1, MAX_HP), member.id))
+                            self.database_connector.commit()
+                        else:
+                            raise ValueError
                 invite = await channel.create_invite(reason='進捗報告を怠ったためにKickしたため。')
                 for member in kick_members:
                     member.send(content=invite.url)
