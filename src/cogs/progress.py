@@ -490,8 +490,8 @@ class Progress(base.Command):
                             raise ValueError
                 invite = await channel.create_invite(reason='進捗報告を怠ったためにKickしたため。')
                 for member in kick_members:
-                    member.send(content=invite.url)
-                    member.kick(reason='進捗報告を怠ったため。')
+                    await member.send(content=invite.url)
+                    await member.kick(reason='進捗報告を怠ったため。')
 
         with self.database_connector.cursor() as cur:
             for update in updates:
