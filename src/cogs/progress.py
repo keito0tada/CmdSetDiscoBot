@@ -15,7 +15,7 @@ import os
 DATABASE_URL = os.getenv('DATABASE_URL')
 ZONE_TOKYO = zoneinfo.ZoneInfo('Asia/Tokyo')
 TIME = datetime.time(hour=4, minute=12, tzinfo=ZONE_TOKYO)
-MAX_HP = 5
+MAX_HP = 3
 
 
 class SettingChannelSelect(discord.ui.ChannelSelect):
@@ -423,14 +423,9 @@ class Progress(base.Command):
                     if message.author in escape_members:
                         escape_members.remove(message.author)
                         sent_members.append(message.author)
-                if len(escape_members) > 0:
-                    mentions = ''
-                    for member in escape_members:
-                        mentions = '{0} {1}'.format(mentions, member.mention)
-                    await channel.send(embed=discord.Embed(
-                        title='進捗どうですか？', description='aaaa'
-                    ))
                 updates.append((date + datetime.timedelta(days=intervals_days), channel_id))
+                max_streak = (0, '')
+                hps = [None for i in range(MAX_HP)]
                 with self.database_connector.cursor() as cur:
                     for member in escape_members:
                         cur.execute('SELECT escape, hp, kick FROM progress_members WHERE user_id = %s',
@@ -442,6 +437,11 @@ class Progress(base.Command):
                             self.database_connector.commit()
                         elif len(results) == 1:
                             if results[0][1] - 1 > 0:
+                                if results[0][1] < MAX_HP:
+                                    if hps[results[0][1]] is None:
+                                        hps[results[0][1]] = member.name
+                                    else:
+                                        hps[results[0][1]] = '{0}, {1}'.format(hps[results[0][1]], member.name)
                                 cur.execute(
                                     'UPDATE progress_members SET streak = %s, escape = %s, hp = %s WHERE user_id = %s',
                                     (0, results[0][0] + 1, results[0][1] - 1, member.id)
@@ -464,15 +464,39 @@ class Progress(base.Command):
                                 (member.id, 0, 0, 0, MAX_HP, 0))
                             self.database_connector.commit()
                         elif len(results) == 1:
+                            if max_streak[0] < results[0][1]:
+                                max_streak = (results[0][1], member.name)
+                            elif max_streak[0] == results[0][1]:
+                                max_streak = (max_streak[0], '{0}, {1}'.format(max_streak[1], member.name))
                             cur.execute('UPDATE progress_members SET total = %s, streak = %s, hp = %s WHERE user_id = %s',
-                                        (results[0][0] + 1, results[0][1] + 1, min(results[0][2] + 1, MAX_HP), member.id))
+                                        (results[0][0] + 1, results[0][1] + 1, min(results[0][2] + (1 if results[0][1] % 3 == 2 else 0), MAX_HP), member.id))
                             self.database_connector.commit()
                         else:
                             raise ValueError
-                invite = await channel.create_invite(reason='進捗報告を怠ったためにKickしたため。')
-                for member in kick_members:
-                    await member.send(content=invite.url)
-                    await member.kick(reason='進捗報告を怠ったため。')
+                if len(kick_members) > 0:
+                    invite = await channel.create_invite(reason='進捗報告を怠ったためにKickしたため。')
+                    member_names = ''
+                    for member in kick_members:
+                        member_names = '{0} {1}'.format(member_names, member.name)
+                        await member.send(content=invite.url)
+                        await member.kick(reason='進捗報告を怠ったため。')
+                    embed = discord.Embed(title='Good Bye!!', description=member_names)
+                    embed.set_thumbnail(url='https://em-content.zobj.net/thumbs/240/twitter/322/rolling-on-the-floor-laughing_1f923.png')
+                    await channel.send(embed=embed)
+                if len(escape_members) > 0:
+                    mentions = ''
+                    for member in escape_members:
+                        mentions = '{0} {1}'.format(mentions, member.mention)
+                    embed = discord.Embed(title='進捗どうですか？', description=mentions)
+                    embed.add_field(name='最大連続報告: {}回'.format(max_streak[0]), value=max_streak[1])
+                    for hp in range(MAX_HP):
+                        if hps[hp] is not None:
+                            embed.add_field(name='残り{}回'.format(hp), value=hps[hp])
+                else:
+                    embed = discord.Embed(title='全員進捗報告済み!!')
+                    embed.add_field(name='最大連続報告: {}回'.format(max_streak[0]), value=max_streak[1])
+                embed.set_footer(text='次回は{}です。'.format((now + datetime.timedelta(days=intervals_days)).strftime('%Y年%m月%d日%H時%M分')))
+                await channel.send(embed=embed)
 
         with self.database_connector.cursor() as cur:
             for update in updates:
