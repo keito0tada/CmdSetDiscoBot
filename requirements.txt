@@ -1,3 +1,4 @@
 discord.py[voice]
 lark
 psycopg2
+pyowm

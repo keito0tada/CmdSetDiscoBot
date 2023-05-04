@@ -177,6 +177,8 @@ class CommandParser:
             if CommandParser._is_flag(args[0]) and CommandParser._is_omitted_flag(args[1]):
                 flag = args[0][2:]
                 omitted_flag = args[1][1:]
+                print(flag)
+                print(omitted_flag)
                 if flag in self.argument_names or omitted_flag in self.argument_names:
                     raise SetDuplicatedArgumentError
                 else:

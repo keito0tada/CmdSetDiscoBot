@@ -14,6 +14,9 @@ from bases import commandparser
 from dataclasses import dataclass
 import enum
 from enum import Enum
+import zoneinfo
+
+ZONE_TOKYO = zoneinfo.ZoneInfo('Asia/Tokyo')
 
 
 class Popups:
@@ -381,5 +384,12 @@ class View(discord.ui.View):
 
     async def on_timeout(self) -> None:
         await self.runner.destroy()
+
+
+@dataclass
+class Emoji:
+    discord: str
+    text: str
+    url: str
 
 

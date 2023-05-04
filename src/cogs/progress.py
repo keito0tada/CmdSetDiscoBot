@@ -437,11 +437,11 @@ class Progress(base.Command):
                             self.database_connector.commit()
                         elif len(results) == 1:
                             if results[0][1] - 1 > 0:
-                                if results[0][1] < MAX_HP:
-                                    if hps[results[0][1]] is None:
-                                        hps[results[0][1]] = member.name
+                                if results[0][1] - 1 < MAX_HP:
+                                    if hps[results[0][1] - 1] is None:
+                                        hps[results[0][1] - 1] = member.name
                                     else:
-                                        hps[results[0][1]] = '{0}, {1}'.format(hps[results[0][1]], member.name)
+                                        hps[results[0][1] - 1] = '{0}, {1}'.format(hps[results[0][1]], member.name)
                                 cur.execute(
                                     'UPDATE progress_members SET streak = %s, escape = %s, hp = %s WHERE user_id = %s',
                                     (0, results[0][0] + 1, results[0][1] - 1, member.id)

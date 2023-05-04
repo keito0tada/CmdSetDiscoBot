@@ -4,7 +4,7 @@ import asyncio
 import os
 
 INITIAL_EXTENSIONS = [
-    'cogs.parrot', 'cogs.poll', 'cogs.janken', 'cogs.poop', 'cogs.progress'
+    'cogs.parrot', 'cogs.poll', 'cogs.janken', 'cogs.poop', 'cogs.progress', 'cogs.weather'
 ]
 TOKEN = os.getenv('DISCORD_BOT_TOKEN')
 bot = commands.Bot(command_prefix='/', intents=discord.Intents.all())
