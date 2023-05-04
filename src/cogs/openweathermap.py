@@ -84,10 +84,19 @@ class Forecast:
     def count(self):
         return len(self.weathers)
 
-    def get_forecast_at(self, date: datetime.datetime):
-        pass
+    def get_forecast_at(self, date: datetime.datetime) -> Optional[Weather]:
+        if len(self.weathers) == 0:
+            return None
+        else:
+            nearest_weather = self.weathers[0]
+            least_timedelta = abs(self.weathers[0].time - date)
+            for weather in self.weathers:
+                if abs(weather.time - date) < least_timedelta:
+                    nearest_weather = weather
+                    least_timedelta = abs(weather.time - date)
+            return nearest_weather
 
-    def get_forecast_index(self, index: int):
+    def get_forecast_index(self, index: int) -> Optional[Weather]:
         return self.weathers[index]
 
 
