@@ -370,15 +370,15 @@ class ExWindows(IWindow):
 
     def get_embed_dict(self, index: enum.IntEnum) -> Optional[dict]:
         self.check_index(index=index)
-        return self.windows[index].get_embed_dict(index=index)
+        return self.windows[index].get_embed_dict(index=-1)
 
     def get_embeds_dicts(self, index: enum.IntEnum) -> Optional[list]:
         self.check_index(index=index)
-        return self.windows[index].get_embeds_dicts(index=index)
+        return self.windows[index].get_embeds_dicts(index=-1)
 
     def get_view_items(self, index: enum.IntEnum) -> Optional[dict]:
         self.check_index(index=index)
-        return self.windows[index].get_view_items(index=index)
+        return self.windows[index].get_view_items(index=-1)
 
     async def send(self, sender: discord.abc.Messageable, index: enum.IntEnum) -> 'IWindow':
         win = await self.windows[index].send(sender=sender, index=0)

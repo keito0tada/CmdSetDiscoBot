@@ -14,8 +14,6 @@ with open('src/cogs/forecast_temp.json', 'r') as f:
 
 
 class Weather:
-    OPEN_WEATHER_ICON_URL: Final[
-        str] = 'https://openweathermap.org/themes/openweathermap/assets/img/mobile_app/android-app-top-banner.png'
 
     class City(NamedTuple):
         lat: Optional[int]
@@ -84,6 +82,9 @@ class Forecast:
     def count(self):
         return len(self.weathers)
 
+    def get_datetime_list(self) -> list[datetime.datetime]:
+        return sorted([weather.time for weather in self.weathers])
+
     def get_forecast_at(self, date: datetime.datetime) -> Optional[Weather]:
         if len(self.weathers) == 0:
             return None
@@ -101,6 +102,11 @@ class Forecast:
 
 
 class OWM:
+    OPEN_WEATHER_ICON_URL: Final[
+        str] = 'https://openweathermap.org/themes/openweathermap/assets/img/mobile_app/android-app-top-banner.png'
+    OPEN_WEATHER_ICON_WITH_TEXT_URL: Final[
+        str] = 'https://openweathermap.org/themes/openweathermap/assets/img/logo_white_cropped.png'
+
     def __init__(self, api_key: str = OWM_API_KEY):
         self.api_key = api_key
 

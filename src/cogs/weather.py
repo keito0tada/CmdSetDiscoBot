@@ -58,18 +58,110 @@ class WeatherButton(discord.ui.Button):
             {'name': '湿度', 'value': '{}%'.format(weather.main.humidity), 'inline': True},
             {'name': '気圧', 'value': '{}hPa'.format(weather.main.pressure), 'inline': True}
         ]
-        embed_dict['footer'] = {'text': 'OpenWeatherを参照しています。', 'url': weather.OPEN_WEATHER_ICON_URL}
+        embed_dict['footer'] = {'text': 'OpenWeatherを参照しています。', 'url': OWM.OPEN_WEATHER_ICON_URL}
         await self.window.response_edit(interaction=interaction, index=WinID.WEATHER)
 
 
 class ForecastButton(discord.ui.Button):
-    def __init__(self, window: base.IWindow, runner: 'Runner'):
+    def __init__(self, runner: 'Runner'):
         super().__init__(label='天気予報', style=discord.ButtonStyle.primary)
-        self.window = window
         self.runner = runner
 
     async def callback(self, interaction: discord.Interaction):
-        weather = (await self.runner.owm.get_forecast(lat=35.689, lon=139.692))[39]
+        await self.runner.change_forecast_datetime(interaction=interaction)
+
+
+class ForecastDatetimeSelect(discord.ui.Select):
+    def __init__(self, runner: 'Runner', times: list[datetime.datetime]):
+        super().__init__(options=[
+            discord.SelectOption(label=time.strftime('%m月%d日%H時%M分'), value=time.isoformat()) for time in times[0:25]
+        ])
+        self.runner = runner
+
+    async def callback(self, interaction: discord.Interaction):
+        await self.runner.change_forecast_datetime(
+            interaction=interaction, time=datetime.datetime.fromisoformat(self.values[0]))
+
+
+class Windows(base.ExWindows):
+    def __init__(self, runner: 'Runner'):
+        super().__init__(
+            windows=(
+                base.ExWindow(embed_dict={
+                    'title': 'お天気 Bot',
+                    'thumbnail': {
+                        'url': OWM.OPEN_WEATHER_ICON_WITH_TEXT_URL
+                    }
+                }, view_items=[
+                    WeatherButton(window=self, runner=runner),
+                    ForecastButton(runner=runner),
+                    Button(window=self, index=WinID.WEATHER_NOTICE_SETTING,
+                           label='お天気通知設定', style=discord.ButtonStyle.primary),
+                    Button(window=self, index=WinID.FORECAST_NOTICE_SETTING,
+                           label='天気予報通知設定', style=discord.ButtonStyle.primary)
+                ]),
+                base.ExWindow(embed_dict={
+                    'title': '', 'description': 'status'
+                }, view_items=[
+                    Button(window=self, index=WinID.MENU, label='戻る'),
+                    Button(window=self, index=WinID.WEATHER_SETTING, label='追加', style=discord.ButtonStyle.primary)
+                ]),
+                base.ExWindow(embed_dict={
+                    'title': 'city name', 'description': 'status'
+                }, view_items=[
+                    None,
+                    Button(window=self, index=WinID.FORECAST_SETTING, label='追加', style=discord.ButtonStyle.primary),
+                    Button(window=self, index=WinID.MENU, label='戻る')
+                ]),
+                base.ExWindow(
+                    embed_dict={
+                        'title': '現在のお天気設定', 'description': 'under construction'
+                    },
+                    view_items=[
+                        Button(window=self, index=WinID.WEATHER, label='戻る')
+                    ]
+                ),
+                base.ExWindow(
+                    embed_dict={
+                        'title': '天気予報設定', 'description': 'under construction'
+                    },
+                    view_items=[
+                        Button(window=self, index=WinID.FORECAST, label='戻る')
+                    ]
+                ),
+                base.ExWindow(
+                    embed_dict={
+                        'title': 'お天気通知設定', 'description': 'under construction'
+                    },
+                    view_items=[
+                        Button(window=self, index=WinID.MENU, label='戻る')
+                    ]
+                ),
+                base.ExWindow(
+                    embed_dict={
+                        'title': '天気予報通知設定', 'description': 'under construction'
+                    },
+                    view_items=[
+                        Button(window=self, index=WinID.MENU, label='戻る')
+                    ]
+                )
+            )
+        )
+
+
+class Runner(base.Runner):
+    def __init__(self, channel: discord.TextChannel):
+        super().__init__(channel=channel)
+        self.window: base.IWindow = Windows(runner=self)
+        self.owm = OWM()
+
+    async def run(self):
+        await self.window.send(sender=self.channel, index=WinID.MENU)
+
+    async def change_forecast_datetime(self, interaction: discord.Interaction,
+                                       time: datetime = datetime.datetime.now(tz=ZONE_TOKYO)):
+        forecast = await self.owm.get_forecast(lat=35.689, lon=139.692)
+        weather = forecast.get_forecast_at(time)
         embed_dict = self.window.get_embed_dict(index=WinID.FORECAST)
         embed_dict['title'] = '{}'.format(weather.city.name)
         embed_dict['description'] = '{0}時点でのお天気は{1}と予測されています。'.format(
@@ -83,59 +175,10 @@ class ForecastButton(discord.ui.Button):
             {'name': '湿度', 'value': '{}%'.format(weather.main.humidity), 'inline': True},
             {'name': '気圧', 'value': '{}hPa'.format(weather.main.pressure), 'inline': True}
         ]
-        embed_dict['footer'] = {'text': 'OpenWeatherを参照しています。', 'url': weather.OPEN_WEATHER_ICON_URL}
+        embed_dict['footer'] = {'text': 'OpenWeatherを参照しています。', 'url': OWM.OPEN_WEATHER_ICON_URL}
+        view_items = self.window.get_view_items(index=WinID.FORECAST)
+        view_items[0] = ForecastDatetimeSelect(runner=self, times=forecast.get_datetime_list())
         await self.window.response_edit(interaction=interaction, index=WinID.FORECAST)
-
-
-class Windows(base.ExWindows):
-    def __init__(self, runner: 'Runner'):
-        super().__init__(
-            windows=(
-                base.ExWindow(embed_dict={
-                    'title': 'お天気 Bot', 'description': '現在の東京都のお天気は'
-                }, view_items=[
-                    WeatherButton(window=self, runner=runner),
-                    ForecastButton(window=self, runner=runner)
-                    Button(window=self, index=WinID.WEATHER_NOTICE_SETTING,
-                           label='お天気通知設定', style=discord.ButtonStyle.primary),
-                    Button(window=self, index=WinID.FORECAST_NOTICE_SETTING,
-                           label='天気予報通知設定', style=discord.ButtonStyle.primary)
-                ]),
-                base.ExWindow(embed_dict={
-                    'title': 'city name　の現在の天気', 'description': 'status'
-                }, view_items=[
-                    Button(window=self, index=WinID.MENU, label='戻る', style=discord.ButtonStyle.secondary),
-                    Button(window=self, index=WinID.WEATHER_SETTING,
-                           label='地名登録', style=discord.ButtonStyle.primary),
-                    Button(window=self, index=WinID.FORECAST_NOTICE_SETTING,
-                           label='天気予報通知設定', style=discord.ButtonStyle.primary)
-                ]),
-                base.ExWindow(embed_dict={
-                    'title': '', 'description': 'status'
-                }, view_items=[
-                    Button(window=self, index=WinID.WEATHER, label='戻る', style=discord.ButtonStyle.secondary)
-                ]),
-                base.ExWindow(embed_dict={
-                    'title': 'city name', 'description': 'status'
-                }, view_items=[
-                    Button(window=self, index=WinID.WEATHER, label='現在のお天気', style=discord.ButtonStyle.primary),
-                    Button(window=self, index=WinID.WEATHER_NOTICE_SETTING,
-                           label='お天気通知設定', style=discord.ButtonStyle.primary),
-                    Button(window=self, index=WinID.FORECAST_NOTICE_SETTING,
-                           label='天気予報通知設定', style=discord.ButtonStyle.primary)
-                ]),
-            )
-        )
-
-
-class Runner(base.Runner):
-    def __init__(self, channel: discord.TextChannel):
-        super().__init__(channel=channel)
-        self.window: base.IWindow = Windows()
-        self.owm = OWM()
-
-    async def run(self):
-        await self.window.send(sender=self.channel, index=WinID.MENU)
 
 
 class Weather(base.Command):
@@ -197,7 +240,7 @@ class Weather(base.Command):
             ],
             'footer': {
                 'text': 'OpenWeatherを参照しています。',
-                'icon_url': weather.OPEN_WEATHER_ICON_URL
+                'icon_url': ''
             }
         })
         )
