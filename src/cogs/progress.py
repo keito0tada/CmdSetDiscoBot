@@ -14,8 +14,19 @@ import os
 
 DATABASE_URL = os.getenv('DATABASE_URL')
 ZONE_TOKYO = zoneinfo.ZoneInfo('Asia/Tokyo')
-TIME = datetime.time(hour=4, minute=12, tzinfo=ZONE_TOKYO)
+DEFAULT_TIMES = [
+    datetime.time(hour=4, minute=12, tzinfo=ZONE_TOKYO),
+    datetime.time(hour=0, minute=0, tzinfo=ZONE_TOKYO),
+    datetime.time(hour=6, minute=0, tzinfo=ZONE_TOKYO),
+    datetime.time(hour=12, minute=0, tzinfo=ZONE_TOKYO),
+    datetime.time(hour=18, minute=0, tzinfo=ZONE_TOKYO)
+]
 MAX_HP = 3
+THINKING_FACE = base.Emoji(
+    discord=':thinking_face:',
+    text='\N{thinking face}',
+    url=''
+)
 
 
 class SettingChannelSelect(discord.ui.ChannelSelect):
@@ -190,7 +201,8 @@ class ProgressWindow(base.Window):
             {'title': '追加 完了'},
             {'title': '変更 完了'},
             {'title': '削除 完了'},
-            {'title': '進捗報告 監視', 'description': '設定したチャンネルに進捗報告があるか監視します。指定した期間内に報告がない場合はメンションが飛びます。また一定回数報告がない場合はこのサーバーからKickされます。'},
+            {'title': '進捗報告 監視',
+             'description': '設定したチャンネルに進捗報告があるか監視します。指定した期間内に報告がない場合はメンションが飛びます。また一定回数報告がない場合はこのサーバーからKickされます。'},
             {'title': '進捗報告　状況', 'description': 'メンバーの進捗報告状況が確認できます。'},
             {'title': 'member name'}
         ], view_patterns=[
@@ -329,7 +341,8 @@ class Runner(base.Runner):
     async def select_member(self, values: List[Union[discord.Member, discord.User]], interaction: discord.Interaction):
         assert len(values) == 1
         with self.database_connector.cursor() as cur:
-            cur.execute('SELECT total, streak, escape, hp, kick FROM progress_members WHERE user_id = %s', (values[0].id,))
+            cur.execute('SELECT total, streak, escape, hp, kick FROM progress_members WHERE user_id = %s',
+                        (values[0].id,))
             results = cur.fetchall()
             self.database_connector.commit()
         total = 0
@@ -339,8 +352,9 @@ class Runner(base.Runner):
         kick = 0
         if len(results) == 0:
             with self.database_connector.cursor() as cur:
-                cur.execute('INSERT INTO progress_members (user_id, total, streak, escape, hp, kick) VALUES (%s, %s, %s, %s, %s, %s)',
-                            (values[0].id, total, streak, escape, hp, kick))
+                cur.execute(
+                    'INSERT INTO progress_members (user_id, total, streak, escape, hp, kick) VALUES (%s, %s, %s, %s, %s, %s)',
+                    (values[0].id, total, streak, escape, hp, kick))
                 self.database_connector.commit()
         elif len(results) == 1:
             total, streak, escape, hp, kick = results[0]
@@ -366,11 +380,12 @@ class Progress(base.Command):
         super().__init__(bot=bot)
         self.printer.start()
         print(self.printer.next_iteration)
+        self.parser.add_argument('comment')
 
         self.database_connector = psycopg2.connect(DATABASE_URL)
         with self.database_connector.cursor() as cur:
             cur.execute(
-                'CREATE TABLE IF NOT EXISTS progress (channel_id BIGINT, interval_days SMALLINT, hour SMALLINT, minute SMALLINT, date DATE)')
+                'CREATE TABLE IF NOT EXISTS progress (channel_id BIGINT, interval_days SMALLINT, hour SMALLINT, minute SMALLINT, date DATE, prev_date DATE, prev_prev_date DATE, member_ids BIGINT[])')
             self.database_connector.commit()
         self.change_printer_interval()
 
@@ -380,36 +395,131 @@ class Progress(base.Command):
             )
             self.database_connector.commit()
 
+        with self.database_connector.cursor() as cur:
+            cur.execute(
+                'CREATE TABLE IF NOT EXISTS progress_reports (channel_id BIGINT, message_id BIGINT, date DATE)'
+            )
+            self.database_connector.commit()
+
     def change_printer_interval(self):
         print('changed printer interval.')
         with self.database_connector.cursor() as cur:
             cur.execute('SELECT hour, minute FROM progress')
             results = cur.fetchall()
-        new_time = [datetime.time(hour=hour, minute=minute, tzinfo=ZONE_TOKYO) for hour, minute in results]
+        new_time = DEFAULT_TIMES + [
+            datetime.time(hour=hour, minute=minute, tzinfo=ZONE_TOKYO) for hour, minute in results
+        ]
         self.printer.change_interval(time=new_time)
         print('printer next iteration is {}'.format(self.printer.next_iteration))
         print(self.printer.time)
         self.printer.restart()
         print('printer next iteration is {}'.format(self.printer.next_iteration))
 
+    @commands.Cog.listener()
+    async def on_raw_reaction_add(self, payload: discord.RawReactionActionEvent):
+        print(payload.emoji)
+        print(payload.member.name)
+        message = await self.bot.get_channel(payload.channel_id).fetch_message(payload.message_id)
+        if datetime.datetime.now(tz=ZONE_TOKYO) - datetime.timedelta(days=1) <= message.created_at:
+            print(message.created_at)
+
     @commands.command()
-    async def progress(self, ctx: commands.Context):
+    async def progress(self, ctx: commands.Context, *args):
+        print(self.bot.intents.reactions)
         print('progress was called.')
         print('printer next iteration is {}'.format(self.printer.next_iteration))
         print(self.printer.time)
-        self.runners.append(Runner(command=self, channel=ctx.channel, database_connector=self.database_connector))
-        await self.runners[len(self.runners) - 1].run()
+        try:
+            namespace = self.parser.parse_args(args=args)
+        except base.commandparser.InputInsufficientRequiredArgumentError:
+            self.runners.append(Runner(command=self, channel=ctx.channel, database_connector=self.database_connector))
+            await self.runners[len(self.runners) - 1].run()
+        else:
+            embed = discord.Embed(
+                title=namespace.comment, timestamp=datetime.datetime.now(tz=ZONE_TOKYO),
+                colour=discord.Colour.green()
+            )
+            embed.set_author(name=ctx.author.name, icon_url=ctx.author.display_avatar.url)
+            embed.set_footer(text='進捗報告')
+            message = await ctx.send(embed=embed)
+            await message.add_reaction('\N{thinking face}')
+            with self.database_connector.cursor() as cur:
+                cur.execute(
+                    'INSERT INTO progress_reports (channel_id, message_id) VALUES (%s, %s)',
+                    (ctx.channel.id, message.id)
+                )
+                self.database_connector.commit()
 
-    @tasks.loop(time=TIME)
+    @tasks.loop(time=DEFAULT_TIMES)
     async def printer(self):
         print('printer was called.')
         with self.database_connector.cursor(cursor_factory=psycopg2.extras.DictCursor) as cur:
-            cur.execute('SELECT channel_id, interval_days, hour, minute, date FROM progress')
+            cur.execute('SELECT channel_id, interval_days, hour, minute, date, prev_date, prev_prev_date, member_ids FROM progress')
             results = cur.fetchall()
             self.database_connector.commit()
 
         now = datetime.datetime.now(tz=ZONE_TOKYO)
         today = now.date()
+
+        with self.database_connector.cursor() as cur:
+            cur.execute(
+                'SELECT channel_id, message_id, date FROM progress_reports '
+            )
+
+        for channel_id, intervals_day, hour, minute, date, prev_date, prev_prev_date, member_ids in results:
+            channel = self.bot.get_channel(channel_id)
+            if channel is None:
+                continue
+            members = [member for member in channel.members if member.id in member_ids]
+
+            # 前回のreportの検証
+            approved_members = []
+            with self.database_connector.cursor() as cur:
+                cur.execute(
+                    'SELECT message_id FROM progress_reports WHERE channel_id = %s AND %s <= date AND date < %s',
+                    (channel_id, prev_prev_date, prev_date)
+                )
+                message_ids = cur.fetchall()
+                self.database_connector.commit()
+            for message_id in message_ids:
+                try:
+                    message = await channel.fetch_message(message_id)
+                except discord.NotFound:
+                    continue
+                else:
+                    if message.author in members:
+                        reactions = [
+                            reaction for reaction in message.reactions if reaction.emoji.name == THINKING_FACE.text]
+                        if len(reactions) == 1:
+                            if reactions[0].count >= len(members) / 2:
+                                approved_members.append(message.author)
+
+            # 今回のreportの検証
+            reported_members = []
+            with self.database_connector.cursor() as cur:
+                cur.execute(
+                    'SELECT message_id FROM progress_reports WHERE channel_id = %s AND %s <= date AND date < %s',
+                    (channel_id, prev_date, date)
+                )
+                message_ids = cur.fetchall()
+                self.database_connector.commit()
+            for message_id in message_ids:
+                try:
+                    message = await channel.fetch_message(message_id)
+                except discord.NotFound:
+                    continue
+                else:
+                    if message.author in members and message.author not in reported_members:
+                        reported_members.append(message.author)
+            print('今日報告した人')
+            print([member.name for member in reported_members])
+            not_reported_members = [member for member in members if member not in reported_members]
+            print('今日報告していない人')
+            print([member.name for member in not_reported_members])
+
+            # channelの情報の更新
+
+
         updates: List[tuple] = []
         for channel_id, intervals_days, hour, minute, date in results:
             called_time = now.replace(hour=hour, minute=minute, second=0, microsecond=0, tzinfo=ZONE_TOKYO)
@@ -429,11 +539,12 @@ class Progress(base.Command):
                 with self.database_connector.cursor() as cur:
                     for member in escape_members:
                         cur.execute('SELECT escape, hp, kick FROM progress_members WHERE user_id = %s',
-                                    (member.id, ))
+                                    (member.id,))
                         results = cur.fetchall()
                         if len(results) == 0:
-                            cur.execute('INSERT INTO progress_members (user_id, total, streak, escape, hp, kick) VALUES (%s, %s, %s, %s, %s, %s)',
-                                        (member.id, 0, 0, 0, MAX_HP, 0))
+                            cur.execute(
+                                'INSERT INTO progress_members (user_id, total, streak, escape, hp, kick) VALUES (%s, %s, %s, %s, %s, %s)',
+                                (member.id, 0, 0, 0, MAX_HP, 0))
                             self.database_connector.commit()
                         elif len(results) == 1:
                             if results[0][1] - 1 > 0:
@@ -457,7 +568,7 @@ class Progress(base.Command):
                         else:
                             raise ValueError
                     for member in sent_members:
-                        cur.execute('SELECT total, streak, hp FROM progress_members WHERE user_id = %s', (member.id, ))
+                        cur.execute('SELECT total, streak, hp FROM progress_members WHERE user_id = %s', (member.id,))
                         results = cur.fetchall()
                         if len(results) == 0:
                             cur.execute(
@@ -469,8 +580,10 @@ class Progress(base.Command):
                                 max_streak = (results[0][1], member.name)
                             elif max_streak[0] == results[0][1]:
                                 max_streak = (max_streak[0], '{0}, {1}'.format(max_streak[1], member.name))
-                            cur.execute('UPDATE progress_members SET total = %s, streak = %s, hp = %s WHERE user_id = %s',
-                                        (results[0][0] + 1, results[0][1] + 1, min(results[0][2] + (1 if results[0][1] % 3 == 2 else 0), MAX_HP), member.id))
+                            cur.execute(
+                                'UPDATE progress_members SET total = %s, streak = %s, hp = %s WHERE user_id = %s',
+                                (results[0][0] + 1, results[0][1] + 1,
+                                 min(results[0][2] + (1 if results[0][1] % 3 == 2 else 0), MAX_HP), member.id))
                             self.database_connector.commit()
                         else:
                             raise ValueError
@@ -486,7 +599,8 @@ class Progress(base.Command):
                         except discord.Forbidden:
                             failed.append(member)
                     embed = discord.Embed(title='Good Bye!!', description=member_names, colour=discord.Colour.red())
-                    embed.set_thumbnail(url='https://em-content.zobj.net/thumbs/240/twitter/322/rolling-on-the-floor-laughing_1f923.png')
+                    embed.set_thumbnail(
+                        url='https://em-content.zobj.net/thumbs/240/twitter/322/rolling-on-the-floor-laughing_1f923.png')
                     if len(failed) > 0:
                         failed_names = failed[0].name
                         for i in range(1, len(failed)):
@@ -498,18 +612,23 @@ class Progress(base.Command):
                     for member in escape_members:
                         mentions = '{0} {1}'.format(mentions, member.mention)
                     embed = discord.Embed(title='進捗どうですか？', description=mentions, colour=discord.Color.orange())
-                    embed.set_thumbnail(url='https://em-content.zobj.net/thumbs/240/twitter/322/thinking-face_1f914.png')
+                    embed.set_thumbnail(
+                        url='https://em-content.zobj.net/thumbs/240/twitter/322/thinking-face_1f914.png')
                     if max_streak[0] > 0:
-                        embed.add_field(name='最大連続報告: {}回'.format(max_streak[0]), value=max_streak[1], inline=False)
+                        embed.add_field(name='最大連続報告: {}回'.format(max_streak[0]), value=max_streak[1],
+                                        inline=False)
                     for hp in range(MAX_HP):
                         if hps[hp] is not None:
                             embed.add_field(name='残り{}回'.format(hp), value=hps[hp])
                 else:
                     embed = discord.Embed(title='全員進捗報告済み!!', colour=discord.Color.blue())
-                    embed.set_thumbnail(url='https://em-content.zobj.net/thumbs/240/twitter/322/smiling-face-with-halo_1f607.png')
+                    embed.set_thumbnail(
+                        url='https://em-content.zobj.net/thumbs/240/twitter/322/smiling-face-with-halo_1f607.png')
                     if max_streak[0] > 0:
-                        embed.add_field(name='最大連続報告: {}回'.format(max_streak[0]), value=max_streak[1], inline=False)
-                embed.set_footer(text='次回は{}です。'.format((now + datetime.timedelta(days=intervals_days)).strftime('%Y年%m月%d日%H時%M分')))
+                        embed.add_field(name='最大連続報告: {}回'.format(max_streak[0]), value=max_streak[1],
+                                        inline=False)
+                embed.set_footer(text='次回は{}です。'.format(
+                    (now + datetime.timedelta(days=intervals_days)).strftime('%Y年%m月%d日%H時%M分')))
                 await channel.send(embed=embed)
 
         with self.database_connector.cursor() as cur:
