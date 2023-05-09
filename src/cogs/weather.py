@@ -83,6 +83,23 @@ class ForecastDatetimeSelect(discord.ui.Select):
             interaction=interaction, time=datetime.datetime.fromisoformat(self.values[0]))
 
 
+class PlaceSelect(discord.ui.Select):
+    def __init__(self, runner: 'Runner', places: list[tuple[int, int]]):
+        super().__init__(options=[
+        ])
+
+
+class InputPlaceModal(discord.ui.Modal):
+    RAT_TEXT = discord.ui.TextInput(label='緯度', required=True)
+    LON_TEXT = discord.ui.TextInput(label='経度', required=True)
+
+    def __init__(self):
+        super().__init__(title='追加')
+
+    async def on_submit(self, interaction: discord.Interaction):
+        await interaction.response.defer()
+
+
 class Windows(base.ExWindows):
     def __init__(self, runner: 'Runner'):
         super().__init__(
@@ -115,7 +132,7 @@ class Windows(base.ExWindows):
                 ]),
                 base.ExWindow(
                     embed_dict={
-                        'title': '現在のお天気設定', 'description': 'under construction'
+                        'title': 'お天気設定', 'description': 'under construction'
                     },
                     view_items=[
                         Button(window=self, index=WinID.WEATHER, label='戻る')
@@ -180,6 +197,9 @@ class Runner(base.Runner):
         view_items[0] = ForecastDatetimeSelect(runner=self, times=forecast.get_datetime_list())
         await self.window.response_edit(interaction=interaction, index=WinID.FORECAST)
 
+    async def add_new_place(self, lat: int, lon: int, interaction: discord.Interaction):
+        pass
+
 
 class Weather(base.Command):
     def __init__(self, bot: discord.ext.commands.Bot):
@@ -203,26 +223,6 @@ class Weather(base.Command):
     async def weather(self, ctx: discord.ext.commands.Context):
         self.runners.append(Runner(channel=ctx.channel))
         await self.runners[len(self.runners) - 1].run()
-
-    async def aaa(self, ctx):
-        weather = await self.owm.get_current_weather(lat=35.689, lon=139.692)
-        await ctx.send(embed=discord.Embed.from_dict({
-            'title': weather.city.name, 'description': '本日{0}時点での天候は{1}です。'.format(
-                weather.time.strftime('%H時%M分'), weather.conditions[0].description),
-            'thumbnail': {'url': weather.get_icon_url()},
-            'fields': [
-                {'name': '気温', 'value': '{}°C'.format(weather.main.temperature), 'inline': True},
-                {'name': '最高気温', 'value': '{}°C'.format(weather.main.temperature_max), 'inline': True},
-                {'name': '最低気温', 'value': '{}°C'.format(weather.main.temperature_min), 'inline': True},
-                {'name': '湿度', 'value': '{}%'.format(weather.main.humidity), 'inline': True},
-                {'name': '気圧', 'value': '{}hPa'.format(weather.main.pressure), 'inline': True}
-            ],
-            'footer': {
-                'text': 'OpenWeatherを参照しています。',
-                'icon_url': weather.OPEN_WEATHER_ICON_URL
-            }
-        })
-        )
 
     @commands.command()
     async def forecast(self, ctx: discord.ext.commands.Context):

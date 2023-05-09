@@ -366,6 +366,7 @@ class Progress(base.Command):
         super().__init__(bot=bot)
         self.printer.start()
         print(self.printer.next_iteration)
+        self.parser.add_argument('comment')
 
         self.database_connector = psycopg2.connect(DATABASE_URL)
         with self.database_connector.cursor() as cur:
@@ -393,12 +394,17 @@ class Progress(base.Command):
         print('printer next iteration is {}'.format(self.printer.next_iteration))
 
     @commands.command()
-    async def progress(self, ctx: commands.Context):
+    async def progress(self, ctx: commands.Context, *args):
         print('progress was called.')
         print('printer next iteration is {}'.format(self.printer.next_iteration))
         print(self.printer.time)
-        self.runners.append(Runner(command=self, channel=ctx.channel, database_connector=self.database_connector))
-        await self.runners[len(self.runners) - 1].run()
+        try:
+            namespace = self.parser.parse_args(args=args)
+        except base.commandparser.InputInsufficientRequiredArgumentError:
+            self.runners.append(Runner(command=self, channel=ctx.channel, database_connector=self.database_connector))
+            await self.runners[len(self.runners) - 1].run()
+        else:
+            await ctx.send('test')
 
     @tasks.loop(time=TIME)
     async def printer(self):

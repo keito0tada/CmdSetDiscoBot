@@ -95,7 +95,7 @@ class ExWindow(IWindow):
         return self.message is not None
 
     def check_index(self, index: enum.IntEnum):
-        if index != -1:
+        if index != 0:
             raise IndexError
 
     def destroy(self):
@@ -370,15 +370,15 @@ class ExWindows(IWindow):
 
     def get_embed_dict(self, index: enum.IntEnum) -> Optional[dict]:
         self.check_index(index=index)
-        return self.windows[index].get_embed_dict(index=-1)
+        return self.windows[index].get_embed_dict(index=0)
 
     def get_embeds_dicts(self, index: enum.IntEnum) -> Optional[list]:
         self.check_index(index=index)
-        return self.windows[index].get_embeds_dicts(index=-1)
+        return self.windows[index].get_embeds_dicts(index=0)
 
     def get_view_items(self, index: enum.IntEnum) -> Optional[dict]:
         self.check_index(index=index)
-        return self.windows[index].get_view_items(index=-1)
+        return self.windows[index].get_view_items(index=0)
 
     async def send(self, sender: discord.abc.Messageable, index: enum.IntEnum) -> 'IWindow':
         win = await self.windows[index].send(sender=sender, index=0)
