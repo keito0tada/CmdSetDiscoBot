@@ -1,6 +1,7 @@
 import abc
 import typing
-from typing import Optional, List, Dict
+from typing import Optional, List, Dict, Union, NamedTuple
+from collections import namedtuple
 
 from discord.ext import commands, tasks
 import discord
@@ -9,9 +10,7 @@ import re
 import datetime
 import os
 import asyncio
-from typing import Union
 from bases import commandparser
-from dataclasses import dataclass
 import enum
 from enum import Enum
 import zoneinfo
@@ -788,8 +787,7 @@ class View(discord.ui.View):
         await self.runner.destroy()
 
 
-@dataclass
-class Emoji:
+class Emoji(NamedTuple):
     discord: str
     text: str
     url: str

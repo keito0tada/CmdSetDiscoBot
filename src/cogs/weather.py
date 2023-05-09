@@ -224,27 +224,6 @@ class Weather(base.Command):
         self.runners.append(Runner(channel=ctx.channel))
         await self.runners[len(self.runners) - 1].run()
 
-    @commands.command()
-    async def forecast(self, ctx: discord.ext.commands.Context):
-        weather = (await self.owm.get_forecast(lat=35.689, lon=139.692)).get_forecast_index(39)
-        await ctx.send(embed=discord.Embed.from_dict({
-            'title': weather.city.name, 'description': '{0}時点での天候は{1}と予測されます。。'.format(
-                weather.time.strftime('%Y年%m月%d日%H時%M分'), weather.conditions[0].description),
-            'thumbnail': {'url': weather.get_icon_url()},
-            'fields': [
-                {'name': '気温', 'value': '{}°C'.format(weather.main.temperature), 'inline': True},
-                {'name': '最高気温', 'value': '{}°C'.format(weather.main.temperature_max), 'inline': True},
-                {'name': '最低気温', 'value': '{}°C'.format(weather.main.temperature_min), 'inline': True},
-                {'name': '湿度', 'value': '{}%'.format(weather.main.humidity), 'inline': True},
-                {'name': '気圧', 'value': '{}hPa'.format(weather.main.pressure), 'inline': True}
-            ],
-            'footer': {
-                'text': 'OpenWeatherを参照しています。',
-                'icon_url': ''
-            }
-        })
-        )
-
     async def send_weather(self, channel_id: int, lat: float, lon: float):
         pass
 
@@ -263,8 +242,8 @@ class Weather(base.Command):
             self.database_connector.commit()
         updates = []
         for result in results:
-            if result[1] + datetime.datetime.fromtimestamp(result[2], tz=ZONE_TOKYO) - timedelta(
-                    minutes=1) <= datetime.now():
+            if result[1] + datetime.datetime.fromtimestamp(result[2], tz=ZONE_TOKYO) - datetime.timedelta(
+                    minutes=1) <= datetime.datetime.now():
                 updates.append((result[0], datetime.datetime.now()))
                 await self.send_weather(channel_id=result[0], lat=result[3], lon=result[5])
         with self.database_connector.cursor() as cur:
