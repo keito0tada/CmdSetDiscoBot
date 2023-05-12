@@ -419,8 +419,8 @@ class Runner(base.Runner):
         if len(results) == 0:
             with self.database_connector.cursor() as cur:
                 cur.execute(
-                    'INSERT INTO progress_members (user_id, total, streak, escape, denied, hp, kick) VALUES (%s, %s, %s, %s, %s, %s, %s)',
-                    (values[0].id, total, streak, escape, denied, hp, kick))
+                    'INSERT INTO progress_members (user_id, total, streak, escape, denied, hp, kick, guild_id) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)',
+                    (values[0].id, total, streak, escape, denied, hp, kick, self.channel.guild.id))
                 self.database_connector.commit()
         elif len(results) == 1:
             total, streak, escape, denied, hp, kick = results[0]
