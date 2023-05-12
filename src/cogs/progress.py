@@ -617,6 +617,10 @@ class Progress(base.Command):
                                 (next_hp, next_kick, channel.guild.id, member.id)
                             )
                             self.database_connector.commit()
+            print('approved')
+            print(approved)
+            print('denied')
+            print(denied)
             if 0 < max(denied.values()):
                 names = ''
                 for member in members:
@@ -651,8 +655,6 @@ class Progress(base.Command):
                 else:
                     if user_id in [member.id for member in members]:
                         reports[user_id] += 1
-                    else:
-                        raise ValueError
 
             # kick
             if len(kick_members) > 0:
