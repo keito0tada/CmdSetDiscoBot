@@ -28,7 +28,22 @@ HEAL_HP_PER_STREAK = 3
 THINKING_FACE = base.Emoji(
     discord=':thinking_face:',
     text='\N{thinking face}',
-    url=''
+    url='https://em-content.zobj.net/thumbs/240/twitter/322/thinking-face_1f914.png'
+)
+ROLLING_ON_THE_FLOOR_LAUGHING = base.Emoji(
+    discord=':rofl:',
+    text='\N{Rolling on the Floor Laughing}',
+    url='https://em-content.zobj.net/thumbs/240/twitter/322/rolling-on-the-floor-laughing_1f923.png'
+)
+INNOCENT = base.Emoji(
+    discord=':innocent:',
+    text='\N{Smiling Face with Halo}',
+    url='https://em-content.zobj.net/thumbs/240/twitter/322/smiling-face-with-halo_1f607.png'
+)
+PARTY_POPPER = base.Emoji(
+    discord=':tada:',
+    text='\N{PARTY POPPER}',
+    url='https://em-content.zobj.net/thumbs/240/twitter/322/party-popper_1f389.png'
 )
 
 
@@ -613,6 +628,7 @@ class Progress(base.Command):
                 embed = discord.Embed(
                     title='進捗報告却下', description=names, colour=discord.Colour.red()
                 )
+                embed.set_thumbnail(url=INNOCENT.url)
                 embeds.append(embed)
 
             # 今回のreportの検証
@@ -653,9 +669,7 @@ class Progress(base.Command):
                     else:
                         await member.send(content=invite.url)
                 embed = discord.Embed(title='Good Bye!!', description=member_names, colour=discord.Colour.red())
-                embed.set_thumbnail(
-                    url='https://em-content.zobj.net/thumbs/240/twitter/322/rolling-on-the-floor-laughing_1f923.png'
-                )
+                embed.set_thumbnail(url=ROLLING_ON_THE_FLOOR_LAUGHING.url)
                 if len(failed) > 0:
                     failed_names = failed[0].name
                     for i in range(1, len(failed)):
@@ -674,9 +688,11 @@ class Progress(base.Command):
                 embed = discord.Embed(title='進捗どうですか??', description=mentions, colour=discord.Colour.orange())
                 embed.set_footer(
                     text='次回は{}です。'.format(next_timestamp.astimezone(tz=ZONE_TOKYO).strftime('%Y年%m月%d日%H時%M分')))
+                embed.set_thumbnail(url=THINKING_FACE.url)
                 embeds.append(embed)
             else:
                 embed = discord.Embed(title='全員報告済み!!', colour=discord.Colour.blue())
+                embed.set_thumbnail(url=PARTY_POPPER.url)
                 embeds.append(embed)
 
             _message = await channel.send(embeds=embeds)
