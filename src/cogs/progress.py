@@ -15,6 +15,7 @@ import os
 
 DATABASE_URL = os.getenv('DATABASE_URL')
 ZONE_TOKYO = zoneinfo.ZoneInfo('Asia/Tokyo')
+ZONE_UTC = zoneinfo.ZoneInfo('UTC')
 DEFAULT_TIMES = [
     datetime.time(hour=0, minute=0, tzinfo=ZONE_TOKYO),
     datetime.time(hour=6, minute=0, tzinfo=ZONE_TOKYO),
@@ -29,6 +30,17 @@ THINKING_FACE = base.Emoji(
     text='\N{thinking face}',
     url=''
 )
+
+
+def calc_nearest_datetime(standard: datetime.datetime, _time: datetime.time) -> datetime.datetime:
+    diff = datetime.timedelta.max
+    nearest_datetime: Optional[datetime.datetime] = None
+    for _date in [standard.date() + datetime.timedelta(days=i) for i in range(-1, 2)]:
+        if (datetime.datetime.combine(date=_date, time=_time, tzinfo=ZONE_UTC) - standard) < diff:
+            nearest_datetime = datetime.datetime.combine(date=_date, time=_time, tzinfo=ZONE_UTC)
+            diff = abs(nearest_datetime - standard)
+    assert abs(nearest_datetime - standard) < datetime.timedelta(days=1)
+    return nearest_datetime
 
 
 class SettingChannelSelect(discord.ui.ChannelSelect):
@@ -228,11 +240,12 @@ class Runner(base.Runner):
         self.progress_window = ProgressWindow(runner=self)
         self.database_connector = database_connector
         self.chosen_channel: Optional[discord.TextChannel] = None
+        self.prev_interval: Optional[datetime.timedelta] = None
         self.interval: Optional[datetime.timedelta] = None
-        self.prev_hour: Optional[int] = None
+        self.prev_time: Optional[datetime.time] = None
         self.hour: Optional[int] = None
-        self.prev_minute: Optional[int] = None
         self.minute: Optional[int] = None
+        self.prev_next_date: Optional[datetime.date] = None
         self.next_date: Optional[datetime.date] = None
 
     async def run(self):
@@ -252,18 +265,16 @@ class Runner(base.Runner):
             self.progress_window.set_pattern(pattern_id=ProgressWindow.WindowID.ADD)
             self.progress_window.embed_dict['title'] = '追加 #{}'.format(self.chosen_channel.name)
         elif len(results) == 1:
-            self.interval = results[0][0]
-            self.prev_hour = results[0][1].hour
-            self.hour = self.prev_hour
-            self.prev_minute = results[0][1].minute
-            self.minute = results[0][1].minute
-            self.next_date = results[0][2].astimezone(tz=ZONE_TOKYO).date()
+            self.prev_interval = results[0][0]
+            self.prev_time = datetime.datetime.combine(date=datetime.date.today(), time=results[0][1],
+                                                       tzinfo=ZONE_UTC).astimezone(tz=ZONE_TOKYO).time()
+            self.prev_next_date = results[0][2].astimezone(tz=ZONE_TOKYO).date()
             self.progress_window.set_pattern(pattern_id=ProgressWindow.WindowID.EDIT)
             self.progress_window.embed_dict['title'] = '変更 #{}'.format(self.chosen_channel.name)
             self.progress_window.embed_dict['fields'] = [
-                {'name': '送信する間隔', 'value': '{}日ごと'.format(self.interval.days)},
-                {'name': '送信する時刻', 'value': '{0}時{1}分'.format(self.hour, self.minute)},
-                {'name': '次に送信される日付', 'value': str(self.next_date)}
+                {'name': '送信する間隔', 'value': '{}日ごと'.format(self.prev_interval.days)},
+                {'name': '送信する時刻', 'value': '{0}時{1}分'.format(self.prev_time.hour, self.prev_time.minute)},
+                {'name': '次に送信される日付', 'value': str(self.prev_next_date)}
             ]
         else:
             raise ValueError
@@ -275,68 +286,82 @@ class Runner(base.Runner):
             self.progress_window.embed_dict['color'] = 0x8b0000
             self.progress_window.embed_dict['fields'] = [{'name': 'エラー', 'value': '要素をすべて選択してください。'}]
         else:
-            with self.database_connector.cursor() as cur:
-                cur.execute('SELECT channel_id FROM progress WHERE channel_id = %s', (self.chosen_channel.id,))
-                results = cur.fetchall()
-                _time = datetime.time(hour=self.hour, minute=self.minute, tzinfo=ZONE_TOKYO)
-                _next_date = datetime.datetime.combine(date=self.next_date, time=_time, tzinfo=ZONE_TOKYO)
-                if len(results) == 0:
-                    cur.execute(
-                        'INSERT INTO progress (channel_id, interval, time, timestamp, prev_timestamp, prev_prev_timestamp, member_ids) VALUES (%s, %s, %s, %s, %s, %s, %s)',
-                        (self.chosen_channel.id, self.interval, _time,
-                         _next_date, _next_date - self.interval, _next_date - self.interval * 2,
-                         [member.id for member in interaction.message.channel.members])
-                    )
-                    self.database_connector.commit()
-                else:
-                    cur.execute(
-                        'UPDATE progress SET interval = %s, time = %s, timestamp = %s WHERE channel_id = %s',
-                        (self.interval, _time, _next_date,
-                         self.chosen_channel.id)
-                    )
-                    self.database_connector.commit()
-            self.command.change_printer_interval()
-            self.progress_window.set_pattern(pattern_id=ProgressWindow.WindowID.ADDED)
-            self.progress_window.embed_dict['fields'] = [
-                {'name': '送信する間隔', 'value': '{}日ごと'.format(self.interval.days)},
-                {'name': '送信する時刻', 'value': '{0}時{1}分'.format(self.hour, self.minute)},
-                {'name': '次に送信される日付', 'value': str(self.next_date)}
-            ]
+            now = datetime.datetime.now(tz=ZONE_TOKYO)
+            new_time = datetime.time(hour=self.hour, minute=self.minute, tzinfo=ZONE_TOKYO)
+            next_datetime = datetime.datetime.combine(date=self.next_date, time=new_time)
+            new_time_utc = next_datetime.astimezone(tz=ZONE_UTC).time()
+            if next_datetime < now:
+                self.progress_window.set_pattern(pattern_id=ProgressWindow.WindowID.ADD)
+                self.progress_window.embed_dict['color'] = 0x8b0000
+                self.progress_window.embed_dict['fields'] = [
+                    {'name': 'エラー', 'value': '次回の時刻は現在以降の時刻を設定してください。'}]
+            else:
+                with self.database_connector.cursor() as cur:
+                    cur.execute('SELECT channel_id FROM progress WHERE channel_id = %s', (self.chosen_channel.id,))
+                    results = cur.fetchall()
+                    if len(results) == 0:
+                        cur.execute(
+                            'INSERT INTO progress (channel_id, interval, time, timestamp, prev_timestamp, prev_prev_timestamp, member_ids) VALUES (%s, %s, %s, %s, %s, %s, %s)',
+                            (self.chosen_channel.id, self.interval, new_time_utc, next_datetime,
+                             next_datetime - self.interval, next_datetime - self.interval * 2,
+                            [_member.id for _member in interaction.message.channel.members])
+                        )
+                        self.database_connector.commit()
+                    else:
+                        cur.execute(
+                            'UPDATE progress SET interval = %s, time = %s, timestamp = %s WHERE channel_id = %s',
+                            (self.interval, new_time_utc, next_datetime, self.chosen_channel.id)
+                        )
+                        self.database_connector.commit()
+                self.command.change_printer_interval()
+                self.progress_window.set_pattern(pattern_id=ProgressWindow.WindowID.ADDED)
+                self.progress_window.embed_dict['fields'] = [
+                    {'name': '送信する間隔', 'value': '{}日ごと'.format(self.interval.days)},
+                    {'name': '送信する時刻', 'value': '{0}時{1}分'.format(self.hour, self.minute)},
+                    {'name': '次に送信される日付', 'value': str(self.next_date)}
+                ]
         await self.progress_window.response_edit(interaction=interaction)
 
     async def edit(self, interaction: discord.Interaction):
-        if datetime.datetime.now(tz=ZONE_TOKYO) >= datetime.datetime.combine(
-                date=self.next_date, time=datetime.time(hour=self.hour, minute=self.minute), tzinfo=ZONE_TOKYO):
+        if self.interval is None or self.hour is None or self.minute is None or self.next_date is None:
             self.progress_window.set_pattern(pattern_id=ProgressWindow.WindowID.EDIT)
             self.progress_window.embed_dict['color'] = 0x8b0000
-            self.progress_window.embed_dict['fields'] = [{'name': 'エラー', 'value': '次回の時刻は現在以降の時刻を設定してください。'}]
+            self.progress_window.embed_dict['fields'] = [{'name': 'エラー', 'value': '要素をすべて選択してください。'}]
         else:
-            with self.database_connector.cursor() as cur:
-                cur.execute('SELECT channel_id FROM progress WHERE channel_id = %s', (self.chosen_channel.id,))
-                results = cur.fetchall()
-                _time = datetime.time(hour=self.hour, minute=self.minute, tzinfo=ZONE_TOKYO)
-                _next_date = datetime.datetime.combine(date=self.next_date, time=_time, tzinfo=ZONE_TOKYO)
-                if len(results) == 0:
-                    cur.execute(
-                        'INSERT INTO progress (channel_id, interval, time, timestamp, prev_timestamp, prev_prev_timestamp, member_ids) VALUES (%s, %s, %s, %s, %s, %s, %s)',
-                        (self.chosen_channel.id, self.interval, _time,
-                         _next_date, _next_date - self.interval, _next_date - self.interval * 2,
-                         [member.id for member in interaction.message.channel.members])
-                    )
-                    self.database_connector.commit()
-                else:
-                    cur.execute(
-                        'UPDATE progress SET interval = %s, time = %s, timestamp = %s WHERE channel_id = %s',
-                        (self.interval, _time, _next_date, self.chosen_channel.id)
-                    )
-                 self.database_connector.commit()
-            self.command.change_printer_interval()
-            self.progress_window.set_pattern(pattern_id=ProgressWindow.WindowID.EDITED)
-            self.progress_window.embed_dict['fields'] = [
-                {'name': '送信する間隔', 'value': '{}日ごと'.format(self.interval.days)},
-                {'name': '送信する時刻', 'value': '{0}時{1}分'.format(self.hour, self.minute)},
-                {'name': '次に送信される日付', 'value': str(self.next_date)}
-            ]
+            now = datetime.datetime.now(tz=ZONE_TOKYO)
+            new_time = datetime.time(hour=self.hour, minute=self.minute, tzinfo=ZONE_TOKYO)
+            next_datetime = datetime.datetime.combine(date=self.next_date, time=new_time)
+            new_time_utc = next_datetime.astimezone(tz=ZONE_UTC).time()
+            if next_datetime < now:
+                self.progress_window.set_pattern(pattern_id=ProgressWindow.WindowID.EDIT)
+                self.progress_window.embed_dict['color'] = 0x8b0000
+                self.progress_window.embed_dict['fields'] = [
+                    {'name': 'エラー', 'value': '次回の時刻は現在以降の時刻を設定してください。'}]
+            else:
+                with self.database_connector.cursor() as cur:
+                    cur.execute('SELECT channel_id FROM progress WHERE channel_id = %s', (self.chosen_channel.id,))
+                    results = cur.fetchall()
+                    if len(results) == 0:
+                        cur.execute(
+                            'INSERT INTO progress (channel_id, interval, time, timestamp, prev_timestamp, prev_prev_timestamp, member_ids) VALUES (%s, %s, %s, %s, %s, %s, %s)',
+                            (self.chosen_channel.id, self.interval, new_time_utc, next_datetime,
+                             next_datetime - self.interval, next_datetime - self.interval * 2,
+                             [_member.id for _member in interaction.message.channel.members])
+                        )
+                        self.database_connector.commit()
+                    else:
+                        cur.execute(
+                            'UPDATE progress SET interval = %s, time = %s, timestamp = %s WHERE channel_id = %s',
+                            (self.interval, new_time_utc, next_datetime, self.chosen_channel.id)
+                        )
+                        self.database_connector.commit()
+                self.command.change_printer_interval()
+                self.progress_window.set_pattern(pattern_id=ProgressWindow.WindowID.EDITED)
+                self.progress_window.embed_dict['fields'] = [
+                    {'name': '送信する間隔', 'value': '{}日ごと'.format(self.interval.days)},
+                    {'name': '送信する時刻', 'value': '{0}時{1}分'.format(self.hour, self.minute)},
+                    {'name': '次に送信される日付', 'value': str(self.next_date)}
+                ]
         await self.progress_window.response_edit(interaction=interaction)
 
     async def back(self, interaction: discord.Interaction):
@@ -414,7 +439,7 @@ class Progress(base.Command):
         self.database_connector = psycopg2.connect(DATABASE_URL)
         with self.database_connector.cursor() as cur:
             cur.execute(
-                'CREATE TABLE IF NOT EXISTS progress (channel_id BIGINT, interval INTERVAL, time TIME, timestamp TIMESTAMP, prev_timestamp TIMESTAMP, prev_prev_timestamp TIMESTAMP, member_ids BIGINT[])')
+                'CREATE TABLE IF NOT EXISTS progress (channel_id BIGINT, interval INTERVAL, time TIME, timestamp TIMESTAMPTZ, prev_timestamp TIMESTAMPTZ, prev_prev_timestamp TIMESTAMPTZ, member_ids BIGINT[])')
             self.database_connector.commit()
         self.change_printer_interval()
 
@@ -426,7 +451,7 @@ class Progress(base.Command):
 
         with self.database_connector.cursor() as cur:
             cur.execute(
-                'CREATE TABLE IF NOT EXISTS progress_reports (channel_id BIGINT, message_id BIGINT, timestamp TIMESTAMP)'
+                'CREATE TABLE IF NOT EXISTS progress_reports (channel_id BIGINT, message_id BIGINT, timestamp TIMESTAMPTZ)'
             )
             self.database_connector.commit()
 
@@ -435,10 +460,14 @@ class Progress(base.Command):
         with self.database_connector.cursor() as cur:
             cur.execute('SELECT time FROM progress')
             results = cur.fetchall()
-        new_time = DEFAULT_TIMES + [_time.replace(tzinfo=ZONE_TOKYO) for _time, in results]
+        new_time = [datetime.datetime.combine(date=datetime.datetime.now(tz=ZONE_TOKYO), time=_time).astimezone(
+            tz=ZONE_UTC).timetz() for _time in DEFAULT_TIMES] + [_time.replace(tzinfo=ZONE_UTC) for _time, in results]
+        for _time in new_time:
+            print(_time.tzinfo)
+            print(_time)
         self.printer.change_interval(time=new_time)
-        print(self.printer.time)
         self.printer.restart()
+        print(self.printer.time)
 
     def calc_status(self, member: discord.Member):
         with self.database_connector.cursor() as cur:
@@ -468,62 +497,69 @@ class Progress(base.Command):
             await message.add_reaction('\N{thinking face}')
             with self.database_connector.cursor() as cur:
                 cur.execute(
-                    'INSERT INTO progress_reports (channel_id, message_id, timestamp) VALUES (%s, %s, %s)',
-                    (ctx.channel.id, message.id, message.created_at)
+                    'INSERT INTO progress_reports (channel_id, message_id, user_id, timestamp) VALUES (%s, %s, %s, %s)',
+                    (ctx.channel.id, message.id, ctx.author.id, message.created_at)
                 )
                 self.database_connector.commit()
 
     @tasks.loop(time=DEFAULT_TIMES)
     async def printer(self):
         print('printer was called.')
-        now = datetime.datetime.now(tz=ZONE_TOKYO)
+        now = datetime.datetime.now(tz=ZONE_UTC)
         with self.database_connector.cursor(cursor_factory=psycopg2.extras.DictCursor) as cur:
-            cur.execute('SELECT channel_id, interval, time, timestamp, prev_timestamp, prev_prev_timestamp, member_ids FROM progress')
+            cur.execute(
+                'SELECT channel_id, interval, time, timestamp, prev_timestamp, prev_prev_timestamp, member_ids FROM progress')
             results = cur.fetchall()
             self.database_connector.commit()
 
         for channel_id, interval, _time, timestamp, prev_timestamp, prev_prev_timestamp, member_ids in results:
+            timestamp = timestamp.astimezone(tz=ZONE_UTC)
+            prev_timestamp = prev_timestamp.astimezone(tz=ZONE_UTC)
+            prev_prev_timestamp = prev_prev_timestamp.astimezone(tz=ZONE_UTC)
+            print('現在:{}'.format(now))
+            print('予定時刻:{}'.format(timestamp))
+            print('前回時刻:{}'.format(prev_timestamp))
+            print('前々回時刻{}'.format(prev_prev_timestamp))
             if now + datetime.timedelta(minutes=1) < timestamp:
                 continue
-            print(datetime.datetime.now(tz=ZONE_TOKYO))
             channel = self.bot.get_channel(channel_id)
             if channel is None:
                 continue
 
             print(channel.name)
-
-            members = [member for member in channel.members if member.id in member_ids and member.id is not self.bot.user.id]
+            members = [member for member in channel.members if
+                       member.id in member_ids and member.id is not self.bot.user.id]
             print([member.name for member in members])
 
+            embeds = []
             # 前回のreportの検証
-            approved: dict[discord.Member, int] = {member: 0 for member in members}
-            denied: dict[discord.Member, int] = {member: 0 for member in members}
+            approved: dict[int, int] = {member.id: 0 for member in members}
+            denied: dict[int, int] = {member.id: 0 for member in members}
             kick_members = []
             with self.database_connector.cursor() as cur:
                 cur.execute(
-                    'SELECT message_id FROM progress_reports WHERE channel_id = %s AND %s <= timestamp AND timestamp < %s', (
-                        channel_id,
-                        prev_timestamp,
-                        prev_prev_timestamp
-                    )
+                    'SELECT message_id, user_id FROM progress_reports WHERE channel_id = %s AND %s <= timestamp AND timestamp < %s',
+                    (channel_id, prev_prev_timestamp, prev_timestamp)
                 )
-                message_ids = cur.fetchall()
+                results = cur.fetchall()
                 self.database_connector.commit()
-            for message_id, in message_ids:
+            print(len(results))
+            print(channel_id)
+            for message_id, user_id in results:
                 try:
                     message = await channel.fetch_message(message_id)
                 except discord.NotFound:
                     continue
                 else:
-                    if message.author in members:
+                    if user_id in [member.id for member in members]:
                         reactions = [
                             reaction for reaction in message.reactions if type(
                                 reaction.emoji) == str and reaction.emoji == THINKING_FACE.text]
                         if len(reactions) == 1:
                             if reactions[0].count < len(members) / 2:
-                                approved[message.author] += 1
+                                approved[user_id] += 1
                             else:
-                                denied[message.author] += 1
+                                denied[user_id] += 1
                         else:
                             raise ValueError
             with self.database_connector.cursor() as cur:
@@ -537,10 +573,11 @@ class Progress(base.Command):
                         continue
                     else:
                         streak, hp = result
-                    if approved[member] > 0:
+                    if approved[member.id] > 0:
                         cur.execute(
-                            'UPDATE progress_members SET total = total + %s, streak = streak + 1, denied = denied + %s, hp = hp + %s WHERE guild_id = %s AND user_id = %s', (
-                                approved[member], denied[member], 1 if (streak + 1) % HEAL_HP_PER_STREAK == 0 else 0,
+                            'UPDATE progress_members SET total = total + %s, streak = streak + 1, denied = denied + %s, hp = hp + %s WHERE guild_id = %s AND user_id = %s',
+                            (
+                                approved[member.id], denied[member.id], 1 if (streak + 1) % HEAL_HP_PER_STREAK == 0 else 0,
                                 channel.guild.id, member.id
                             )
                         )
@@ -553,10 +590,10 @@ class Progress(base.Command):
                         else:
                             next_hp = hp - 1
                             next_kick = 0
-                        if denied[member] > 0:
+                        if denied[member.id] > 0:
                             cur.execute(
                                 'UPDATE progress_members SET streak = 0, denied = denied + %s, hp = %s, kick = kick + %s WHERE guild_id = %s AND user_id = %s',
-                                (denied[member], next_hp, next_kick, channel.guild.id, member.id)
+                                (denied[member.id], next_hp, next_kick, channel.guild.id, member.id)
                             )
                             self.database_connector.commit()
                         else:
@@ -565,32 +602,42 @@ class Progress(base.Command):
                                 (next_hp, next_kick, channel.guild.id, member.id)
                             )
                             self.database_connector.commit()
+            if 0 < max(denied.values()):
+                names = ''
+                for member in members:
+                    if denied[member.id] > 0:
+                        if names == '':
+                            names = member.name
+                        else:
+                            names = '{0}, {1}'.format(names, member.name)
+                embed = discord.Embed(
+                    title='進捗報告却下', description=names, colour=discord.Colour.red()
+                )
+                embeds.append(embed)
 
             # 今回のreportの検証
-            reports: dict[discord.Member, int] = {member: 0 for member in members}
+            reports: dict[int, int] = {member.id: 0 for member in members}
             with self.database_connector.cursor() as cur:
                 cur.execute(
-                    'SELECT message_id FROM progress_reports WHERE channel_id = %s AND %s <= timestamp AND timestamp < %s', (
-                        channel_id,
-                        datetime.datetime.combine(date=prev_timestamp, time=_time, tzinfo=ZONE_TOKYO),
-                        datetime.datetime.combine(date=timestamp, time=_time, tzinfo=ZONE_TOKYO)
-                    )
+                    'SELECT message_id, user_id FROM progress_reports WHERE channel_id = %s AND %s <= timestamp AND timestamp < %s',
+                    (channel_id, prev_timestamp, timestamp)
                 )
                 results = cur.fetchall()
-                message_ids = [result[0] for result in results]
                 self.database_connector.commit()
-            for message_id in message_ids:
+            print(len(results))
+            print(channel_id)
+            for message_id, user_id in results:
                 try:
                     message = await channel.fetch_message(message_id)
                 except discord.NotFound:
                     print('Not Found')
                     continue
                 else:
-                    print(message.embeds[0].author)
-                    if message.embeds[0].author in members:
-                        reports[message.embeds[0].author] += 1
+                    if user_id in [member.id for member in members]:
+                        reports[user_id] += 1
+                    else:
+                        raise ValueError
 
-            embeds = []
             # kick
             if len(kick_members) > 0:
                 invite = await channel.create_invite(reason='進捗報告を怠ったためにKickしたため。')
@@ -616,34 +663,34 @@ class Progress(base.Command):
                     embed.add_field(name='権限不足でKickできなかったメンバー', value=failed_names)
                 embeds.append(embed)
 
-
-            next_timestamp = datetime.datetime.combine(date=datetime.datetime.now(tz=ZONE_TOKYO).date(),
-                                                       )
-
-
+            next_timestamp = calc_nearest_datetime(now, _time.replace(tzinfo=ZONE_UTC)) + interval
 
             # 進捗催促
             print(reports)
             if 0 in reports.values():
                 mentions = ''
-                for member in [member for member in reports.keys() if reports[member] == 0]:
+                for member in [member for member in members if reports[member.id] == 0]:
                     mentions = '{0} {1}'.format(mentions, member.name)
                 embed = discord.Embed(title='進捗どうですか??', description=mentions, colour=discord.Colour.orange())
-                embed.set_footer(text='次回は{}です。'.format(
-                    datetime.datetime.combine(date=(date + interval), time=_time).strftime('%Y年%m月%d日%H時%M分'))
-                )
+                embed.set_footer(
+                    text='次回は{}です。'.format(next_timestamp.astimezone(tz=ZONE_TOKYO).strftime('%Y年%m月%d日%H時%M分')))
                 embeds.append(embed)
             else:
                 embed = discord.Embed(title='全員報告済み!!', colour=discord.Colour.blue())
                 embeds.append(embed)
 
-            await channel.send(embeds=embeds)
+            _message = await channel.send(embeds=embeds)
+            print(_message.created_at)
 
+            # 古いreportの削除
             # channelの情報の更新
             with self.database_connector.cursor() as cur:
                 cur.execute(
-                    'UPDATE progress SET date = %s, prev_date = %s, prev_prev_date = %s WHERE channel_id = %s',
-                    (date + interval, date, prev_date, channel_id)
+                    'DELETE FROM progress_reports WHERE timestamp < %s', (prev_prev_timestamp,)
+                )
+                cur.execute(
+                    'UPDATE progress SET timestamp = %s, prev_timestamp = %s, prev_prev_timestamp = %s WHERE channel_id = %s',
+                    (next_timestamp, timestamp, prev_timestamp, channel_id)
                 )
                 self.database_connector.commit()
 
