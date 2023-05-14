@@ -45,6 +45,21 @@ PARTY_POPPER = base.Emoji(
     text='\N{PARTY POPPER}',
     url='https://em-content.zobj.net/thumbs/240/twitter/322/party-popper_1f389.png'
 )
+PARTY_FACE = base.Emoji(
+    discord=':partying_face:',
+    text='\N{Partying Face}',
+    url='https://em-content.zobj.net/thumbs/240/twitter/322/partying-face_1f973.png'
+)
+CHECK_MARK_BUTTON = base.Emoji(
+    discord=':white_check_mark:',
+    text='\N{Check Mark Button}',
+    url='https://em-content.zobj.net/thumbs/240/twitter/322/check-mark-button_2705.png'
+)
+CROSS_MARK = base.Emoji(
+    discord=':x:',
+    text='\N{Cross Mark}',
+    url='https://em-content.zobj.net/thumbs/240/twitter/322/cross-mark_274c.png'
+)
 
 
 def calc_nearest_datetime(standard: datetime.datetime, _time: datetime.time) -> datetime.datetime:
@@ -504,7 +519,7 @@ class Progress(base.Command):
         else:
             embed = discord.Embed(
                 title=namespace.comment, timestamp=datetime.datetime.now(tz=ZONE_TOKYO),
-                colour=discord.Colour.green()
+                colour=discord.Colour.light_gray()
             )
             embed.set_author(name=ctx.author.name, icon_url=ctx.author.display_avatar.url)
             embed.set_footer(text='進捗報告')
@@ -573,8 +588,16 @@ class Progress(base.Command):
                         if len(reactions) == 1:
                             if reactions[0].count < len(members) / 2:
                                 approved[user_id] += 1
+                                embed_dict = message.embeds[0].to_dict()
+                                embed_dict['thumbnail'] = {'url': CHECK_MARK_BUTTON.url}
+                                embed_dict['color'] = discord.Colour.green().value
+                                await message.edit(embed=discord.Embed.from_dict(embed_dict))
                             else:
                                 denied[user_id] += 1
+                                embed_dict = message.embeds[0].to_dict()
+                                embed_dict['thumbnail'] = {'url': CROSS_MARK.url}
+                                embed_dict['color'] = discord.Colour.red().value
+                                await message.edit(embed=discord.Embed.from_dict(embed_dict))
                         else:
                             raise ValueError
             with self.database_connector.cursor() as cur:
@@ -621,6 +644,20 @@ class Progress(base.Command):
             print(approved)
             print('denied')
             print(denied)
+            if 0 < max(approved.values()):
+                names = ''
+                for member in members:
+                    if approved[member.id] > 0:
+                        if names == '':
+                            names = member.name
+                        else:
+                            names = '{0}, {1}'.format(names, member.name)
+                embed = discord.Embed(
+                    title='進捗報告承認!!', description=names, colour=discord.Colour.green()
+                )
+                embed.set_thumbnail(url=PARTY_POPPER.url)
+                embeds.append(embed)
+
             if 0 < max(denied.values()):
                 names = ''
                 for member in members:
@@ -694,11 +731,8 @@ class Progress(base.Command):
                 embeds.append(embed)
             else:
                 embed = discord.Embed(title='全員報告済み!!', colour=discord.Colour.blue())
-                embed.set_thumbnail(url=PARTY_POPPER.url)
+                embed.set_thumbnail(url=PARTY_FACE.url)
                 embeds.append(embed)
-
-            _message = await channel.send(embeds=embeds)
-            print(_message.created_at)
 
             # 古いreportの削除
             # channelの情報の更新
