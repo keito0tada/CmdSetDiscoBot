@@ -221,7 +221,18 @@ class MemberSelect(discord.ui.UserSelect):
         self.runner = runner
 
     async def callback(self, interaction: discord.Interaction):
-        await self.runner.select_member(values=self.values, interaction=interaction)
+        self.runner.chosen_member_on_member_status = self.values[0]
+        await self.runner.move_member_status(interaction=interaction)
+
+
+class TextChannelSelectOnMemberStatus(discord.ui.ChannelSelect):
+    def __init__(self, runner: 'Runner'):
+        super().__init__(placeholder='テキストチャンネル', channel_types=discord.ChannelType.text)
+        self.runner = runner
+
+    async def callback(self, interaction: discord.Interaction):
+        self.runner.chosen_channel_on_member_status = self.values[0]
+        await self.runner.move_member_status(interaction=interaction)
 
 
 class ProgressWindow(base.Window):
@@ -234,10 +245,12 @@ class ProgressWindow(base.Window):
         DELETED = 5
         MENU = 6
         MEMBERS = 7
-        MEMBER = 8
+        MEMBER_STATUS = 8
+        NOT_FOUND_REPORT_CHANNEL = 9
+        NOT_JOINED = 10
 
     def __init__(self, runner: 'Runner'):
-        super().__init__(patterns=9, embed_patterns=[
+        super().__init__(patterns=11, embed_patterns=[
             {'title': '進捗報告チャンネル　設定',
              'description': '進捗報告用のチャンネルを設定できます。進捗報告がないメンバーには催促のメンションが飛びます。'},
             {'title': '追加', 'description': '時間を指定して追加できます。'},
@@ -248,7 +261,9 @@ class ProgressWindow(base.Window):
             {'title': '進捗報告 監視',
              'description': '設定したチャンネルに進捗報告があるか監視します。指定した期間内に報告がない場合はメンションが飛びます。また一定回数報告がない場合はこのサーバーからKickされます。'},
             {'title': '進捗報告　状況', 'description': 'メンバーの進捗報告状況が確認できます。'},
-            {'title': 'member name'}
+            {'title': 'member name'},
+            {'title': '{0}は進捗報告チャンネルとして登録されていません。', 'color': discord.Colour.orange().value},
+            {'title': '{0}は進捗報告のメンバーに登録されていません。', 'color': discord.Colour.orange().value}
         ], view_patterns=[
             [SettingChannelSelect(runner=runner), BackMenuButton(runner=runner)],
             [IntervalDaysSelect(runner=runner), HourSelect(runner=runner), MinuteSelect(runner=runner),
@@ -258,7 +273,10 @@ class ProgressWindow(base.Window):
              DeleteButton(runner=runner)],
             [BackButton(runner=runner)], [BackButton(runner=runner)], [BackButton(runner=runner)],
             [MembersButton(runner=runner), SettingButton(runner=runner)],
-            [MemberSelect(runner=runner), BackMenuButton(runner=runner)],
+            [TextChannelSelectOnMemberStatus(runner=runner), MemberSelect(runner=runner),
+             BackMenuButton(runner=runner)],
+            [BackMembersButton(runner=runner)],
+            [BackMembersButton(runner=runner)],
             [BackMembersButton(runner=runner)]
         ])
 
@@ -277,6 +295,9 @@ class Runner(base.Runner):
         self.minute: Optional[int] = None
         self.prev_next_date: Optional[datetime.date] = None
         self.next_date: Optional[datetime.date] = None
+        self.chosen_channel_on_member_status: Union[
+            discord.app_commands.AppCommandChannel, discord.app_commands.AppCommandThread, None] = None
+        self.chosen_member_on_member_status: Union[discord.Member, discord.User, None] = None
 
     async def run(self):
         self.progress_window.set_pattern(pattern_id=ProgressWindow.WindowID.MENU)
@@ -418,41 +439,43 @@ class Runner(base.Runner):
         self.progress_window.set_pattern(pattern_id=ProgressWindow.WindowID.MENU)
         await self.progress_window.response_edit(interaction=interaction)
 
-    async def select_member(self, values: List[Union[discord.Member, discord.User]], interaction: discord.Interaction):
-        assert len(values) == 1
-        with self.database_connector.cursor() as cur:
-            cur.execute('SELECT total, streak, escape, denied, hp, kick FROM progress_members WHERE user_id = %s',
-                        (values[0].id,))
-            results = cur.fetchall()
-            self.database_connector.commit()
-        total = 0
-        streak = 0
-        escape = 0
-        denied = 0
-        hp = MAX_HP
-        kick = 0
-        if len(results) == 0:
-            with self.database_connector.cursor() as cur:
-                cur.execute(
-                    'INSERT INTO progress_members (user_id, total, streak, escape, denied, hp, kick, guild_id) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)',
-                    (values[0].id, total, streak, escape, denied, hp, kick, self.channel.guild.id))
-                self.database_connector.commit()
-        elif len(results) == 1:
-            total, streak, escape, denied, hp, kick = results[0]
+    async def move_member_status(self, interaction: discord.Interaction):
+        if self.chosen_member_on_member_status is None or self.chosen_channel_on_member_status is None:
+            await interaction.response.defer()
         else:
-            raise ValueError
-        self.progress_window.set_pattern(pattern_id=ProgressWindow.WindowID.MEMBER)
-        self.progress_window.embed_dict['title'] = '*{}*'.format(values[0].name)
-        self.progress_window.embed_dict['thumbnail'] = {'url': values[0].display_avatar.url}
-        self.progress_window.embed_dict['fields'] = [
-            {'name': '報告回数', 'value': '{}回'.format(total)},
-            {'name': '現在の連続日数', 'value': '{}日'.format(streak)},
-            {'name': '報告忘れ回数', 'value': '{}回'.format(escape)},
-            {'name': '却下された回数', 'value': '{}回'.format(denied)},
-            {'name': 'Kickされるまでの残り回数', 'value': '{}回'.format(hp)},
-            {'name': 'Kickされた回数', 'value': '{}回'.format(kick)}
-        ]
-        await self.progress_window.response_edit(interaction=interaction)
+            try:
+                channel = await self.chosen_channel_on_member_status.fetch()
+            except discord.NotFound:
+                pass
+            else:
+                if self.chosen_member_on_member_status in channel.members:
+                    with self.database_connector.cursor() as cur:
+                        cur.execute(
+                            'SELECT total, streak, escape, denied, hp, kick FROM progress_members WHERE channel_id = %s AND user_id = %s',
+                            (channel.id, self.chosen_member_on_member_status.id)
+                        )
+                        results = cur.fetchall()
+                        self.database_connector.commit()
+                    if len(results) == 0:
+                        self.progress_window.set_pattern(pattern_id=ProgressWindow.WindowID.NOT_FOUND_REPORT_CHANNEL)
+                        await self.progress_window.response_edit(interaction=interaction)
+                    elif len(results) == 1:
+                        total, streak, escape, denied, hp, kick = results[0]
+                        self.progress_window.set_pattern(pattern_id=ProgressWindow.WindowID.MEMBER_STATUS)
+                        self.progress_window.embed_dict['title'] = '*{}*'.format(self.chosen_member_on_member_status.name)
+                        self.progress_window.embed_dict['thumbnail'] = {
+                            'url': self.chosen_member_on_member_status.display_avatar.url}
+                        self.progress_window.embed_dict['fields'] = [
+                            {'name': '報告回数', 'value': '{}回'.format(total)},
+                            {'name': '現在の連続日数', 'value': '{}日'.format(streak)},
+                            {'name': '報告忘れ回数', 'value': '{}回'.format(escape)},
+                            {'name': '却下された回数', 'value': '{}回'.format(denied)},
+                            {'name': 'Kickされるまでの残り回数', 'value': '{}回'.format(hp)},
+                            {'name': 'Kickされた回数', 'value': '{}回'.format(kick)}
+                        ]
+                        await self.progress_window.response_edit(interaction=interaction)
+                    else:
+                        raise RuntimeError
 
     async def back_members(self, interaction: discord.Interaction):
         self.progress_window.set_pattern(pattern_id=ProgressWindow.WindowID.MEMBERS)
@@ -475,7 +498,7 @@ class Progress(base.Command):
 
         with self.database_connector.cursor() as cur:
             cur.execute(
-                'CREATE TABLE IF NOT EXISTS progress_members (guild_id BIGINT, user_id BIGINT, total INTEGER, streak INTEGER, escape INTEGER, denied INTEGER, hp INTEGER, kick INTEGER)'
+                'CREATE TABLE IF NOT EXISTS progress_members (channel_id BIGINT, user_id BIGINT, total INTEGER, streak INTEGER, escape INTEGER, denied INTEGER, hp INTEGER, kick INTEGER)'
             )
             self.database_connector.commit()
 
@@ -603,8 +626,8 @@ class Progress(base.Command):
             with self.database_connector.cursor() as cur:
                 for member in members:
                     cur.execute(
-                        'SELECT streak, hp FROM progress_members WHERE guild_id = %s AND user_id = %s',
-                        (channel.guild.id, member.id)
+                        'SELECT streak, hp FROM progress_members WHERE channel_id = %s AND user_id = %s',
+                        (channel_id, member.id)
                     )
                     result = cur.fetchone()
                     if result is None:
@@ -613,10 +636,10 @@ class Progress(base.Command):
                         streak, hp = result
                     if approved[member.id] > 0:
                         cur.execute(
-                            'UPDATE progress_members SET total = total + %s, streak = streak + 1, denied = denied + %s, hp = hp + %s WHERE guild_id = %s AND user_id = %s',
+                            'UPDATE progress_members SET total = total + %s, streak = streak + 1, denied = denied + %s, hp = hp + %s WHERE channel_id = %s AND user_id = %s',
                             (
-                                approved[member.id], denied[member.id], 1 if (streak + 1) % HEAL_HP_PER_STREAK == 0 else 0,
-                                channel.guild.id, member.id
+                                approved[member.id], denied[member.id],
+                                1 if (streak + 1) % HEAL_HP_PER_STREAK == 0 else 0, channel_id, member.id
                             )
                         )
                         self.database_connector.commit()
@@ -630,14 +653,14 @@ class Progress(base.Command):
                             next_kick = 0
                         if denied[member.id] > 0:
                             cur.execute(
-                                'UPDATE progress_members SET streak = 0, denied = denied + %s, hp = %s, kick = kick + %s WHERE guild_id = %s AND user_id = %s',
-                                (denied[member.id], next_hp, next_kick, channel.guild.id, member.id)
+                                'UPDATE progress_members SET streak = 0, denied = denied + %s, hp = %s, kick = kick + %s WHERE channel_id = %s AND user_id = %s',
+                                (denied[member.id], next_hp, next_kick, channel_id, member.id)
                             )
                             self.database_connector.commit()
                         else:
                             cur.execute(
-                                'UPDATE progress_members SET streak = 0, escape = escape + 1, hp = %s, kick = kick + %s WHERE guild_id = %s AND user_id = %s',
-                                (next_hp, next_kick, channel.guild.id, member.id)
+                                'UPDATE progress_members SET streak = 0, escape = escape + 1, hp = %s, kick = kick + %s WHERE channel_id = %s AND user_id = %s',
+                                (next_hp, next_kick, channel_id, member.id)
                             )
                             self.database_connector.commit()
             print('approved')
