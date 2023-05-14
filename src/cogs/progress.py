@@ -47,12 +47,12 @@ PARTY_POPPER = base.Emoji(
 )
 PARTY_FACE = base.Emoji(
     discord=':partying_face:',
-    text='\N{Partying Face}',
+    text='\N{Face with Party Horn and Party Hat}',
     url='https://em-content.zobj.net/thumbs/240/twitter/322/partying-face_1f973.png'
 )
 CHECK_MARK_BUTTON = base.Emoji(
     discord=':white_check_mark:',
-    text='\N{Check Mark Button}',
+    text='\N{White Heavy Check Mark}',
     url='https://em-content.zobj.net/thumbs/240/twitter/322/check-mark-button_2705.png'
 )
 CROSS_MARK = base.Emoji(
