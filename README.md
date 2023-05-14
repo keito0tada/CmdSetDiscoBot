@@ -1,1 +1,1 @@
-# CmdSetDiscoBot
+# CmdSetDiscoBot: A discord bot
