@@ -227,7 +227,7 @@ class MemberSelect(discord.ui.UserSelect):
 
 class TextChannelSelectOnMemberStatus(discord.ui.ChannelSelect):
     def __init__(self, runner: 'Runner'):
-        super().__init__(placeholder='テキストチャンネル', channel_types=discord.ChannelType.text)
+        super().__init__(placeholder='テキストチャンネル', channel_types=[discord.ChannelType.text])
         self.runner = runner
 
     async def callback(self, interaction: discord.Interaction):
@@ -246,11 +246,10 @@ class ProgressWindow(base.Window):
         MENU = 6
         MEMBERS = 7
         MEMBER_STATUS = 8
-        NOT_FOUND_REPORT_CHANNEL = 9
-        NOT_JOINED = 10
+        ERROR_ON_MEMBER_STATUS = 9
 
     def __init__(self, runner: 'Runner'):
-        super().__init__(patterns=11, embed_patterns=[
+        super().__init__(patterns=10, embed_patterns=[
             {'title': '進捗報告チャンネル　設定',
              'description': '進捗報告用のチャンネルを設定できます。進捗報告がないメンバーには催促のメンションが飛びます。'},
             {'title': '追加', 'description': '時間を指定して追加できます。'},
@@ -262,7 +261,7 @@ class ProgressWindow(base.Window):
              'description': '設定したチャンネルに進捗報告があるか監視します。指定した期間内に報告がない場合はメンションが飛びます。また一定回数報告がない場合はこのサーバーからKickされます。'},
             {'title': '進捗報告　状況', 'description': 'メンバーの進捗報告状況が確認できます。'},
             {'title': 'member name'},
-            {'title': '{0}は進捗報告チャンネルとして登録されていません。', 'color': discord.Colour.orange().value},
+            {'title': 'エラー', 'color': discord.Colour.orange().value},
             {'title': '{0}は進捗報告のメンバーに登録されていません。', 'color': discord.Colour.orange().value}
         ], view_patterns=[
             [SettingChannelSelect(runner=runner), BackMenuButton(runner=runner)],
@@ -273,9 +272,7 @@ class ProgressWindow(base.Window):
              DeleteButton(runner=runner)],
             [BackButton(runner=runner)], [BackButton(runner=runner)], [BackButton(runner=runner)],
             [MembersButton(runner=runner), SettingButton(runner=runner)],
-            [TextChannelSelectOnMemberStatus(runner=runner), MemberSelect(runner=runner),
-             BackMenuButton(runner=runner)],
-            [BackMembersButton(runner=runner)],
+            [TextChannelSelectOnMemberStatus(runner=runner), MemberSelect(runner=runner), BackMenuButton(runner=runner)],
             [BackMembersButton(runner=runner)],
             [BackMembersButton(runner=runner)]
         ])
@@ -334,7 +331,7 @@ class Runner(base.Runner):
     async def add(self, interaction: discord.Interaction):
         if self.interval is None or self.hour is None or self.minute is None or self.next_date is None:
             self.progress_window.set_pattern(pattern_id=ProgressWindow.WindowID.ADD)
-            self.progress_window.embed_dict['color'] = 0x8b0000
+            self.progress_window.embed_dict['color'] = discord.Colour.orange().value
             self.progress_window.embed_dict['fields'] = [{'name': 'エラー', 'value': '要素をすべて選択してください。'}]
         else:
             now = datetime.datetime.now(tz=ZONE_TOKYO)
@@ -343,7 +340,7 @@ class Runner(base.Runner):
             new_time_utc = next_datetime.astimezone(tz=ZONE_UTC).time()
             if next_datetime < now:
                 self.progress_window.set_pattern(pattern_id=ProgressWindow.WindowID.ADD)
-                self.progress_window.embed_dict['color'] = 0x8b0000
+                self.progress_window.embed_dict['color'] = discord.Colour.orange().value
                 self.progress_window.embed_dict['fields'] = [
                     {'name': 'エラー', 'value': '次回の時刻は現在以降の時刻を設定してください。'}]
             else:
@@ -446,36 +443,60 @@ class Runner(base.Runner):
             try:
                 channel = await self.chosen_channel_on_member_status.fetch()
             except discord.NotFound:
-                pass
+                self.progress_window.set_pattern(pattern_id=ProgressWindow.WindowID.ERROR_ON_MEMBER_STATUS)
+                self.progress_window.embed_dict['title'] = '# {0}はこのサーバーに存在しません。'.format(
+                    self.chosen_channel_on_member_status.name)
+                await self.progress_window.response_edit(interaction=interaction)
             else:
-                if self.chosen_member_on_member_status in channel.members:
-                    with self.database_connector.cursor() as cur:
-                        cur.execute(
-                            'SELECT total, streak, escape, denied, hp, kick FROM progress_members WHERE channel_id = %s AND user_id = %s',
-                            (channel.id, self.chosen_member_on_member_status.id)
-                        )
-                        results = cur.fetchall()
-                        self.database_connector.commit()
-                    if len(results) == 0:
-                        self.progress_window.set_pattern(pattern_id=ProgressWindow.WindowID.NOT_FOUND_REPORT_CHANNEL)
-                        await self.progress_window.response_edit(interaction=interaction)
-                    elif len(results) == 1:
-                        total, streak, escape, denied, hp, kick = results[0]
-                        self.progress_window.set_pattern(pattern_id=ProgressWindow.WindowID.MEMBER_STATUS)
-                        self.progress_window.embed_dict['title'] = '*{}*'.format(self.chosen_member_on_member_status.name)
-                        self.progress_window.embed_dict['thumbnail'] = {
-                            'url': self.chosen_member_on_member_status.display_avatar.url}
-                        self.progress_window.embed_dict['fields'] = [
-                            {'name': '報告回数', 'value': '{}回'.format(total)},
-                            {'name': '現在の連続日数', 'value': '{}日'.format(streak)},
-                            {'name': '報告忘れ回数', 'value': '{}回'.format(escape)},
-                            {'name': '却下された回数', 'value': '{}回'.format(denied)},
-                            {'name': 'Kickされるまでの残り回数', 'value': '{}回'.format(hp)},
-                            {'name': 'Kickされた回数', 'value': '{}回'.format(kick)}
-                        ]
-                        await self.progress_window.response_edit(interaction=interaction)
+                with self.database_connector.cursor() as cur:
+                    cur.execute(
+                        'SELECT * FROM progress WHERE channel_id = %s', (channel.id, )
+                    )
+                    results = cur.fetchall()
+                if len(results) == 0:
+                    self.progress_window.set_pattern(pattern_id=ProgressWindow.WindowID.ERROR_ON_MEMBER_STATUS)
+                    self.progress_window.embed_dict['title'] = '# {0}は進捗報告チャンネルとして登録されていません。'.format(
+                        channel.name)
+                    await self.progress_window.response_edit(interaction=interaction)
+                elif len(results) == 1:
+                    if self.chosen_member_on_member_status in channel.members:
+                        with self.database_connector.cursor() as cur:
+                            cur.execute(
+                                'SELECT total, streak, escape, denied, hp, kick FROM progress_members WHERE channel_id = %s AND user_id = %s',
+                                (channel.id, self.chosen_member_on_member_status.id)
+                            )
+                            results = cur.fetchall()
+                            self.database_connector.commit()
+                        if len(results) == 0:
+                            self.progress_window.set_pattern(pattern_id=ProgressWindow.WindowID.ERROR_ON_MEMBER_STATUS)
+                            self.progress_window.embed_dict['title'] = '{0}さんは'
+                            await self.progress_window.response_edit(interaction=interaction)
+                        elif len(results) == 1:
+                            total, streak, escape, denied, hp, kick = results[0]
+                            self.progress_window.set_pattern(pattern_id=ProgressWindow.WindowID.MEMBER_STATUS)
+                            self.progress_window.embed_dict['title'] = '*{}*'.format(self.chosen_member_on_member_status.name)
+                            self.progress_window.embed_dict['thumbnail'] = {
+                                'url': self.chosen_member_on_member_status.display_avatar.url}
+                            self.progress_window.embed_dict['fields'] = [
+                                {'name': '報告回数', 'value': '{}回'.format(total)},
+                                {'name': '現在の連続日数', 'value': '{}日'.format(streak)},
+                                {'name': '報告忘れ回数', 'value': '{}回'.format(escape)},
+                                {'name': '却下された回数', 'value': '{}回'.format(denied)},
+                                {'name': 'Kickされるまでの残り回数', 'value': '{}回'.format(hp)},
+                                {'name': 'Kickされた回数', 'value': '{}回'.format(kick)}
+                            ]
+                            await self.progress_window.response_edit(interaction=interaction)
+                        else:
+                            raise RuntimeError
                     else:
-                        raise RuntimeError
+                        self.progress_window.set_pattern(pattern_id=ProgressWindow.WindowID.ERROR_ON_MEMBER_STATUS)
+                        self.progress_window.embed_dict['title'] = '{0}は# {1}に参加していません。'.format(
+                            self.chosen_member_on_member_status.name, channel.name)
+                        await self.progress_window.response_edit(interaction=interaction)
+                else:
+                    raise RuntimeError
+                self.chosen_member_on_member_status = None
+                self.chosen_channel_on_member_status = None
 
     async def back_members(self, interaction: discord.Interaction):
         self.progress_window.set_pattern(pattern_id=ProgressWindow.WindowID.MEMBERS)
@@ -756,6 +777,8 @@ class Progress(base.Command):
                 embed = discord.Embed(title='全員報告済み!!', colour=discord.Colour.blue())
                 embed.set_thumbnail(url=PARTY_FACE.url)
                 embeds.append(embed)
+
+            await channel.send(embeds=embeds)
 
             # 古いreportの削除
             # channelの情報の更新
