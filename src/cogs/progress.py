@@ -492,7 +492,7 @@ class Progress(base.Command):
         self.database_connector = psycopg2.connect(DATABASE_URL)
         with self.database_connector.cursor() as cur:
             cur.execute(
-                'CREATE TABLE IF NOT EXISTS progress (channel_id BIGINT, interval INTERVAL, time TIME, timestamp TIMESTAMPTZ, prev_timestamp TIMESTAMPTZ, prev_prev_timestamp TIMESTAMPTZ, member_ids BIGINT[])')
+                'CREATE TABLE IF NOT EXISTS progress (channel_id BIGINT, interval INTERVAL, time TIME, timestamp TIMESTAMPTZ, prev_timestamp TIMESTAMPTZ, prev_prev_timestamp TIMESTAMPTZ)')
             self.database_connector.commit()
         self.change_printer_interval()
 
@@ -554,16 +554,59 @@ class Progress(base.Command):
                     (ctx.channel.id, message.id, ctx.author.id, message.created_at)
                 )
                 self.database_connector.commit()
+                
+    async def send_to_remind(self):
+        pass
+
+    async def kick_zero_hp_members(self):
+        pass
+
+    async def test_present_progress_reports(self):
+        pass
+
+    async def test_prev_progress_reports(self):
+        pass
+
+    async def check_progress_channel(self, channel_id: int, interval: datetime.timedelta, regular_time: datetime.time,
+                                     scheduled_timestamp: datetime.datetime, prev_timestamp: datetime.datetime,
+                                     prev_prev_timestamp: datetime.datetime, now: datetime.datetime):
+        # fix to UTC
+        scheduled_timestamp = scheduled_timestamp.astimezone(tz=ZONE_UTC)
+        prev_timestamp = prev_timestamp.astimezone(tz=ZONE_UTC)
+        prev_prev_timestamp = prev_prev_timestamp.astimezone(tz=ZONE_UTC)
+
+        # return if it has not been at the scheduled time yet.
+        if now + datetime.timedelta(minutes=1) < scheduled_timestamp:
+            return
+
+        channel = self.bot.get_channel(channel_id)
+        if channel is None:
+            return
+
+        # retrieve the registered member's ids
+        user_statuses = []
+        with self.database_connector.cursor() as cur:
+            cur.execute(
+                'SELECT user_id, total, streak, escape, denied, hp, kick FROM progress_members WHERE channel_id = %s',
+                (channel_id,)
+            )
+            user_statuses = cur.fetchall()
+            self.database_connector.commit()
+
+
 
     @tasks.loop(time=DEFAULT_TIMES)
     async def printer(self):
-        print('printer was called.')
         now = datetime.datetime.now(tz=ZONE_UTC)
         with self.database_connector.cursor(cursor_factory=psycopg2.extras.DictCursor) as cur:
             cur.execute(
-                'SELECT channel_id, interval, time, timestamp, prev_timestamp, prev_prev_timestamp, member_ids FROM progress')
+                'SELECT channel_id, interval, time, timestamp, prev_timestamp, prev_prev_timestamp FROM progress')
             results = cur.fetchall()
             self.database_connector.commit()
+
+        for channel_id, interval, regular_time, scheduled_time, prev_time, prev_prev_time in results:
+            await self.check_progress_channel(channel_id, interval, regular_time,
+                                              scheduled_time, prev_time, prev_prev_time)
 
         for channel_id, interval, _time, timestamp, prev_timestamp, prev_prev_timestamp, member_ids in results:
             timestamp = timestamp.astimezone(tz=ZONE_UTC)
